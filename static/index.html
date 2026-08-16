@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>English Shadowing Practice</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header id="app-header">
+  <input id="video-input" type="text" placeholder="Paste a YouTube URL or video ID...">
+  <button id="load-btn">Load</button>
+  <select id="history-select">
+    <option value="">-- Recent videos --</option>
+  </select>
+  <span id="video-title"></span>
+</header>
+
+<div id="toolbar">
+  <div class="toggle-group" id="mode-toggle">
+    <button class="mode-btn active" id="transcript-mode-btn">⇄ Modified</button>
+    <button class="mode-btn" id="bookmarks-mode-btn">⭐ Bookmarks</button>
+  </div>
+  <button id="recommend-btn" title="Score every sentence and mark the best ones to shadow">🎯 Recommend sentences</button>
+  <select id="recommend-ratio" title="How much of the transcript to mark">
+    <option value="0.1">Top 10%</option>
+    <option value="0.2" selected>Top 20%</option>
+    <option value="0.3">Top 30%</option>
+  </select>
+  <button id="regen-modified-btn" title="Regenerate the modified (sentence) transcript">🔄 Regenerate sentences</button>
+  <button id="regen-raw-btn" title="Re-download the raw transcript">🔄 Re-download raw</button>
+  <button id="flush-dict-btn" title="Clear cached word, sentence and grammar explanations">🗑 Clear explanation cache</button>
+</div>
+
+<main id="app-main">
+  <section id="transcript-panel">
+    <div id="transcript-status">Load a video to begin.</div>
+    <ol id="transcript-list"></ol>
+  </section>
+
+  <div id="col-resizer" class="resizer" role="separator" aria-orientation="vertical" tabindex="0"
+       title="Drag to resize the columns · double-click to reset"></div>
+
+  <section id="player-panel">
+    <div id="video-stage">
+      <div id="yt-player"></div>
+    </div>
+    <div id="player-controls">
+      <div class="toggle-group" id="accent-toggle">
+        <button class="accent-btn active" data-accent="en-GB">British</button>
+        <button class="accent-btn" data-accent="en-US">American</button>
+      </div>
+      <button id="tts-play-btn">🔊 Play sentence (TTS)</button>
+      <label id="autopause-label">
+        <input type="checkbox" id="autopause-toggle" checked>
+        Auto-pause at sentence end
+      </label>
+      <label id="stay-label" title="When auto-pause fires, hold the highlight on the sentence that just played instead of letting it slide onto the next one, so R / TTS repeats what you just heard.">
+        <input type="checkbox" id="stay-toggle" checked>
+        Stay on sentence
+      </label>
+    </div>
+
+    <div id="row-resizer" class="resizer" role="separator" aria-orientation="horizontal" tabindex="0"
+         title="Drag to resize the video · double-click to reset"></div>
+
+    <section id="chat-panel">
+      <div id="chat-header">
+        <span id="chat-title">💬 Ask about this video</span>
+        <span id="chat-meta"></span>
+        <button id="chat-clear" title="Clear this conversation">🗑 Clear</button>
+      </div>
+      <div id="chat-log"></div>
+      <div id="chat-chips">
+        <button class="chat-chip" data-prompt="summarize">📝 Summarize</button>
+        <button class="chat-chip" data-prompt="quiz">❓ Quiz me</button>
+        <button class="chat-chip" data-prompt="flowchart">🔀 Flowchart</button>
+      </div>
+      <form id="chat-form">
+        <textarea id="chat-input" rows="2" placeholder="Ask about this video..."></textarea>
+        <button id="chat-send" type="submit">Send</button>
+      </form>
+    </section>
+
+    <details id="shortcuts-hint">
+      <summary>⌨ Shortcuts</summary>
+      <strong>Modified mode shortcuts:</strong> A = previous sentence &nbsp; S = repeat sentence &nbsp; D = next sentence
+      <br><strong>Speak aloud:</strong> R = read the sentence with TTS
+      <br><strong>Esc</strong> = pin this sentence &amp; pause the video, so TTS keeps speaking it instead of following playback. Esc again to resume.
+      <br><strong>Explanations:</strong> double-click a word &nbsp; E = sentence in easy English &nbsp; G = grammar
+      <br>R, E and G all target the sentence your mouse is on (or the highlighted one). Alt+S also works for E.
+    </details>
+  </section>
+</main>
+
+<div id="explain-popup" class="hidden">
+  <button id="popup-close">×</button>
+  <div id="popup-mode"></div>
+  <div id="popup-title"></div>
+  <div id="popup-body"></div>
+  <div id="popup-hint">Double-click a word &middot; point at a sentence + E for easy English &middot; G for grammar &middot; Esc to close</div>
+</div>
+<div id="popup-overlay" class="hidden"></div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="/app.js"></script>
+</body>
+</html>
