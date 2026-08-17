@@ -1,7 +1,7 @@
 import os
 from openai import OpenAI
 
-from dictionary import _SIMPLE_ENGLISH_RULE, _learner
+from dictionary import _explain_lang_name, _explanation_rule, _learner
 
 _client = None
 
@@ -70,8 +70,8 @@ def build_transcript_block(sentences: list[dict], prof: dict) -> tuple[str, floa
     return "\n".join(lines), covered_until, truncated
 
 
-def _system_prompt(transcript_block: str, prof: dict) -> str:
-    """Byte-identical across turns for a given video.
+def _system_prompt(transcript_block: str, prof: dict, explain_lang: str) -> str:
+    """Byte-identical across turns for a given video and explanation language.
 
     That matters: OpenAI caches long identical prefixes automatically, so
     holding this stable discounts the repeated transcript at no cost in code.
@@ -80,8 +80,9 @@ def _system_prompt(transcript_block: str, prof: dict) -> str:
         f"You are helping {_learner(prof)} who is shadow-practicing a YouTube video. "
         "Answer questions about the video using ONLY the transcript below. If the "
         "transcript does not contain the answer, say so plainly instead of guessing.\n\n"
-        f"{_SIMPLE_ENGLISH_RULE}\n\n"
-        "Always answer in English, whatever language the question is in.\n\n"
+        f"{_explanation_rule(explain_lang)}\n\n"
+        f"Always answer in {_explain_lang_name(explain_lang)}, whatever language the question is "
+        "in.\n\n"
         "When you refer to a moment in the video, cite it as [mm:ss] using the "
         "timestamps in the transcript. Only cite timestamps that actually appear "
         "there.\n\n"
@@ -95,7 +96,7 @@ def _system_prompt(transcript_block: str, prof: dict) -> str:
     )
 
 
-def answer(sentences: list[dict], messages: list[dict], prof: dict) -> dict:
+def answer(sentences: list[dict], messages: list[dict], prof: dict, explain_lang: str = "en") -> dict:
     transcript_block, covered_until, truncated = build_transcript_block(sentences, prof)
 
     history = [
@@ -106,7 +107,7 @@ def answer(sentences: list[dict], messages: list[dict], prof: dict) -> dict:
     if not history:
         raise ChatError("There was no question to answer.")
 
-    system = _system_prompt(transcript_block, prof)
+    system = _system_prompt(transcript_block, prof, explain_lang)
     model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 
     try:

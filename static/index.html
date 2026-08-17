@@ -2,45 +2,51 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Shadowing Practice — Anybody can learn Any language</title>
+<title data-i18n="appTitle">Shadowing Practice — Anybody can learn Any language</title>
+<script>
+  document.documentElement.dataset.theme =
+    localStorage.getItem("shadowing.theme.v1") || "light";
+</script>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header id="app-header">
-  <select id="lang-select" title="The language you are practising. Pick it before loading a video."></select>
-  <input id="video-input" type="text" placeholder="Paste a YouTube URL or video ID...">
-  <button id="load-btn">Load</button>
+  <select id="lang-select" data-i18n-title="langSelectTitle" title="The language you are practising. Pick it before loading a video."></select>
+  <input id="video-input" type="text" data-i18n-placeholder="videoInputPlaceholder" placeholder="Paste a YouTube URL or video ID...">
+  <button id="load-btn" data-i18n="loadBtn">Load</button>
   <select id="history-select">
-    <option value="">-- Recent videos --</option>
+    <option value="" data-i18n="historyDefaultOption">-- Recent videos --</option>
   </select>
   <span id="video-title"></span>
+  <button id="ui-lang-toggle" data-i18n-title="uiLangToggleTitle" title="Switch interface and explanation language">한국어</button>
+  <button id="theme-toggle" data-i18n-title="themeToggleTitle" title="Switch between light and dark theme">🌙 Dark</button>
 </header>
 
 <div id="toolbar">
   <div class="toggle-group" id="mode-toggle">
     <button class="mode-btn active" id="transcript-mode-btn">⇄ Modified</button>
-    <button class="mode-btn" id="bookmarks-mode-btn">⭐ Bookmarks</button>
+    <button class="mode-btn" id="bookmarks-mode-btn" data-i18n="bookmarksModeBtn">⭐ Bookmarks</button>
   </div>
-  <button id="recommend-btn" title="Score every sentence and mark the best ones to shadow">🎯 Recommend sentences</button>
-  <select id="recommend-ratio" title="How much of the transcript to mark">
-    <option value="0.1">Top 10%</option>
-    <option value="0.2" selected>Top 20%</option>
-    <option value="0.3">Top 30%</option>
+  <button id="recommend-btn" data-i18n="recommendBtn" data-i18n-title="recommendBtnTitle" title="Score every sentence and mark the best ones to shadow">🎯 Recommend sentences</button>
+  <select id="recommend-ratio" data-i18n-title="recommendRatioTitle" title="How much of the transcript to mark">
+    <option value="0.1" data-i18n="ratioTop10">Top 10%</option>
+    <option value="0.2" selected data-i18n="ratioTop20">Top 20%</option>
+    <option value="0.3" data-i18n="ratioTop30">Top 30%</option>
   </select>
-  <button id="reading-toggle" class="hidden" title="Show or hide the pronunciation above each word">あ Reading</button>
-  <button id="regen-modified-btn" title="Regenerate the modified (sentence) transcript">🔄 Regenerate sentences</button>
-  <button id="regen-raw-btn" title="Re-download the raw transcript">🔄 Re-download raw</button>
-  <button id="flush-dict-btn" title="Clear cached word, sentence and grammar explanations">🗑 Clear explanation cache</button>
+  <button id="reading-toggle" class="hidden" data-i18n="readingToggle" data-i18n-title="readingToggleTitle" title="Show or hide the pronunciation above each word">あ Reading</button>
+  <button id="regen-modified-btn" data-i18n="regenModifiedBtn" data-i18n-title="regenModifiedBtnTitle" title="Regenerate the modified (sentence) transcript">🔄 Regenerate sentences</button>
+  <button id="regen-raw-btn" data-i18n="regenRawBtn" data-i18n-title="regenRawBtnTitle" title="Re-download the raw transcript">🔄 Re-download raw</button>
+  <button id="flush-dict-btn" data-i18n="flushDictBtn" data-i18n-title="flushDictBtnTitle" title="Clear cached word, sentence and grammar explanations">🗑 Clear explanation cache</button>
 </div>
 
 <main id="app-main">
   <section id="transcript-panel">
-    <div id="transcript-status">Load a video to begin.</div>
+    <div id="transcript-status" data-i18n="transcriptStatusInitial">Load a video to begin.</div>
     <ol id="transcript-list"></ol>
   </section>
 
   <div id="col-resizer" class="resizer" role="separator" aria-orientation="vertical" tabindex="0"
-       title="Drag to resize the columns · double-click to reset"></div>
+       data-i18n-title="colResizerTitle" title="Drag to resize the columns · double-click to reset"></div>
 
   <section id="player-panel">
     <div id="video-stage">
@@ -48,41 +54,42 @@
     </div>
     <div id="player-controls">
       <div class="toggle-group" id="voice-toggle"></div>
-      <button id="tts-play-btn">🔊 Play sentence (TTS)</button>
-      <button id="slow-toggle" title="Speak slowly. The voice itself slows down, so tones and pitch accent stay correct — unlike slowing the audio down afterwards.">🐢 Slow</button>
+      <button id="tts-play-btn" data-i18n="ttsPlayBtn">🔊 Play sentence (TTS)</button>
+      <button id="slow-toggle" data-i18n="slowToggle" data-i18n-title="slowToggleTitle" title="Speak slowly. The voice itself slows down, so tones and pitch accent stay correct — unlike slowing the audio down afterwards.">🐢 Slow</button>
       <label id="autopause-label">
         <input type="checkbox" id="autopause-toggle" checked>
-        Auto-pause at sentence end
+        <span data-i18n="autopauseLabel">Auto-pause at sentence end</span>
       </label>
-      <label id="stay-label" title="When auto-pause fires, hold the highlight on the sentence that just played instead of letting it slide onto the next one, so R / TTS repeats what you just heard.">
+      <label id="stay-label" data-i18n-title="stayLabelTitle" title="When auto-pause fires, hold the highlight on the sentence that just played instead of letting it slide onto the next one, so R / TTS repeats what you just heard.">
         <input type="checkbox" id="stay-toggle" checked>
-        Stay on sentence
+        <span data-i18n="stayLabel">Stay on sentence</span>
       </label>
     </div>
 
     <div id="row-resizer" class="resizer" role="separator" aria-orientation="horizontal" tabindex="0"
-         title="Drag to resize the video · double-click to reset"></div>
+         data-i18n-title="rowResizerTitle" title="Drag to resize the video · double-click to reset"></div>
 
     <section id="chat-panel">
       <div id="chat-header">
-        <span id="chat-title">💬 Ask about this video</span>
+        <span id="chat-title" data-i18n="chatTitle">💬 Ask about this video</span>
         <span id="chat-meta"></span>
-        <button id="chat-clear" title="Clear this conversation">🗑 Clear</button>
+        <button id="chat-clear" data-i18n="chatClearBtn" data-i18n-title="chatClearTitle" title="Clear this conversation">🗑 Clear</button>
       </div>
       <div id="chat-log"></div>
       <div id="chat-chips">
-        <button class="chat-chip" data-prompt="summarize">📝 Summarize</button>
-        <button class="chat-chip" data-prompt="quiz">❓ Quiz me</button>
-        <button class="chat-chip" data-prompt="flowchart">🔀 Flowchart</button>
+        <button class="chat-chip" data-prompt="summarize" data-i18n="chipSummarize">📝 Summarize</button>
+        <button class="chat-chip" data-prompt="quiz" data-i18n="chipQuiz">❓ Quiz me</button>
+        <button class="chat-chip" data-prompt="flowchart" data-i18n="chipFlowchart">🔀 Flowchart</button>
       </div>
       <form id="chat-form">
-        <textarea id="chat-input" rows="2" placeholder="Ask about this video..."></textarea>
-        <button id="chat-send" type="submit">Send</button>
+        <textarea id="chat-input" rows="2" data-i18n-placeholder="chatInputPlaceholder" placeholder="Ask about this video..."></textarea>
+        <button id="chat-send" type="submit" data-i18n="chatSendBtn">Send</button>
       </form>
     </section>
 
     <details id="shortcuts-hint">
-      <summary>⌨ Shortcuts</summary>
+      <summary data-i18n="shortcutsSummary">⌨ Shortcuts</summary>
+      <div data-i18n-html="shortcutsHelpHtml">
       <strong>Modified mode shortcuts:</strong> A = previous sentence &nbsp; S = repeat sentence &nbsp; D = next sentence
       <br><strong>Speak aloud:</strong> R = read the sentence with TTS
       <br><strong>Speak a selection:</strong> select any text, then T = speak it in the language you are learning &nbsp; Shift+T = speak it in English. Works inside the explanation popup and the chat too.
@@ -90,6 +97,7 @@
       <br><strong>Explanations:</strong> double-click a word &nbsp; E = sentence in easy English &nbsp; G = grammar
       <br><strong>Breakdown:</strong> O (or Alt+O) = translate the sentence, then gloss it part by part, with a dictionary-form vocabulary list you can copy straight into Anki. Select a phrase first to break down just that phrase.
       <br>R, E, G and O all target the sentence your mouse is on (or the highlighted one). Alt+S also works for E.
+      </div>
     </details>
   </section>
 </main>
@@ -99,7 +107,7 @@
   <div id="popup-mode"></div>
   <div id="popup-title"></div>
   <div id="popup-body"></div>
-  <div id="popup-hint">Double-click a word &middot; point at a sentence + E for easy English &middot; G for grammar &middot; O for a part-by-part breakdown &middot; Esc to close
+  <div id="popup-hint" data-i18n-html="popupHintHtml">Double-click a word &middot; point at a sentence + E for easy English &middot; G for grammar &middot; O for a part-by-part breakdown &middot; Esc to close
   <br>Drag the bottom-right corner to widen this window &mdash; the width is remembered.</div>
 </div>
 <div id="popup-overlay" class="hidden"></div>

@@ -4,8 +4,13 @@ Adding a language should mean adding a dict entry here and nothing else. Every
 prompt in segmenter/dictionary/recommender/chat is parameterized by these
 fields, so there is no per-language code path anywhere else in the server.
 
-Explanations are always written in English, whatever the transcript language
-is, so nothing here describes the *output* language -- only the input one.
+Explanation language (what word/sentence/grammar/breakdown explanations and
+chat answers are written in -- English or Korean) is a separate, per-request
+setting handled in dictionary.py and chat.py, independent of the profiles
+below. This file only ever describes the *target* language: the one being
+shadowed. Korean's `name_ko` field below is the one exception -- it exists so
+the picker can label these target languages in Korean when the interface is,
+even though Korean itself is not a registered target language.
 """
 
 
@@ -17,6 +22,8 @@ class UnknownLanguage(Exception):
 #
 # name          how the language is named to the LLM inside prompts.
 # native        how it is named to the user, in the language selector.
+# name_ko       how it is named to the user in the selector when the interface
+#               is in Korean.
 # captions      YouTube caption codes to try, best first. Only ever matched
 #               against real tracks: auto-translated tracks are never accepted,
 #               because their text does not match the audio and shadowing a
@@ -41,6 +48,7 @@ LANGUAGES = {
     "en": {
         "name": "English",
         "native": "English",
+        "name_ko": "영어",
         "captions": ["en", "en-US", "en-GB"],
         "voices": {"British": "en-GB-SoniaNeural", "American": "en-US-AriaNeural"},
         "timing_unit": "word",
@@ -67,6 +75,7 @@ LANGUAGES = {
     "zh": {
         "name": "Mandarin Chinese",
         "native": "中文",
+        "name_ko": "중국어",
         "captions": ["zh-Hans", "zh-CN", "zh", "zh-Hant", "zh-TW"],
         "voices": {"Female": "zh-CN-XiaoxiaoNeural", "Male": "zh-CN-YunxiNeural"},
         "timing_unit": "char",
@@ -94,6 +103,7 @@ LANGUAGES = {
     "ja": {
         "name": "Japanese",
         "native": "日本語",
+        "name_ko": "일본어",
         "captions": ["ja", "ja-JP"],
         "voices": {"Female": "ja-JP-NanamiNeural", "Male": "ja-JP-KeitaNeural"},
         "timing_unit": "char",
@@ -124,6 +134,7 @@ LANGUAGES = {
     "vi": {
         "name": "Vietnamese",
         "native": "Tiếng Việt",
+        "name_ko": "베트남어",
         "captions": ["vi", "vi-VN"],
         "voices": {"Female": "vi-VN-HoaiMyNeural", "Male": "vi-VN-NamMinhNeural"},
         # Vietnamese is the reason timing and word grouping are separate fields.
@@ -243,6 +254,7 @@ def public_profiles() -> list[dict]:
                 "code": code,
                 "name": prof["name"],
                 "native": prof["native"],
+                "name_ko": prof.get("name_ko"),
                 "voices": prof["voices"],
                 "has_reading": prof["reading"] is not None,
                 "reading_name": prof["reading"],

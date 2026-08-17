@@ -67,6 +67,8 @@ const el = {
   historySelect: document.getElementById("history-select"),
   readingToggle: document.getElementById("reading-toggle"),
   videoTitle: document.getElementById("video-title"),
+  themeToggle: document.getElementById("theme-toggle"),
+  uiLangToggle: document.getElementById("ui-lang-toggle"),
   status: document.getElementById("transcript-status"),
   list: document.getElementById("transcript-list"),
   transcriptModeBtn: document.getElementById("transcript-mode-btn"),
@@ -98,6 +100,345 @@ const el = {
   toast: document.getElementById("toast"),
 };
 
+// ---- UI language (interface chrome + explanation language) ----
+// One switch drives two things: every button/label around the app, and the
+// language word/sentence/grammar/breakdown explanations and chat answers come
+// back in. They are kept locked together on purpose -- a reader fluent enough
+// in Korean to want a Korean interface wants Korean explanations too, and
+// splitting the two into separate settings would double the state for no
+// benefit anyone asked for.
+const STRINGS = {
+  en: {
+    appTitle: "Shadowing Practice — Anybody can learn Any language",
+    langSelectTitle: "The language you are practising. Pick it before loading a video.",
+    videoInputPlaceholder: "Paste a YouTube URL or video ID...",
+    loadBtn: "Load",
+    historyDefaultOption: "-- Recent videos --",
+    uiLangToggleTitle: "Switch interface and explanation language",
+    themeToggleTitle: "Switch between light and dark theme",
+    themeToggleDark: "🌙 Dark",
+    themeToggleLight: "☀️ Light",
+    bookmarksModeBtn: "⭐ Bookmarks",
+    modeModified: "Modified",
+    modeOriginal: "Original",
+    modeSwitchTitle: "Switch to {to}",
+    recommendBtn: "🎯 Recommend sentences",
+    recommendBtnTitle: "Score every sentence and mark the best ones to shadow",
+    recommendRatioTitle: "How much of the transcript to mark",
+    ratioTop10: "Top 10%",
+    ratioTop20: "Top 20%",
+    ratioTop30: "Top 30%",
+    readingToggle: "あ Reading",
+    readingToggleTitle: "Show or hide the pronunciation above each word",
+    regenModifiedBtn: "🔄 Regenerate sentences",
+    regenModifiedBtnTitle: "Regenerate the modified (sentence) transcript",
+    regenRawBtn: "🔄 Re-download raw",
+    regenRawBtnTitle: "Re-download the raw transcript",
+    flushDictBtn: "🗑 Clear explanation cache",
+    flushDictBtnTitle: "Clear cached word, sentence and grammar explanations",
+    transcriptStatusInitial: "Load a video to begin.",
+    colResizerTitle: "Drag to resize the columns · double-click to reset",
+    ttsPlayBtn: "🔊 Play sentence (TTS)",
+    slowToggle: "🐢 Slow",
+    slowToggleTitle:
+      "Speak slowly. The voice itself slows down, so tones and pitch accent stay correct — unlike slowing the audio down afterwards.",
+    autopauseLabel: "Auto-pause at sentence end",
+    stayLabel: "Stay on sentence",
+    stayLabelTitle:
+      "When auto-pause fires, hold the highlight on the sentence that just played instead of letting it slide onto the next one, so R / TTS repeats what you just heard.",
+    rowResizerTitle: "Drag to resize the video · double-click to reset",
+    chatTitle: "💬 Ask about this video",
+    chatClearBtn: "🗑 Clear",
+    chatClearTitle: "Clear this conversation",
+    chipSummarize: "📝 Summarize",
+    chipQuiz: "❓ Quiz me",
+    chipFlowchart: "🔀 Flowchart",
+    chipSummarizePrompt: "Summarize this video in 5 to 8 bullet points. Cite [mm:ss] for each point.",
+    chipQuizPrompt:
+      "Make 5 multiple-choice questions about this video. Give four options A to D for each one, " +
+      "then list the correct answers under an '### Answers' heading at the end.",
+    chipFlowchartPrompt:
+      "Draw the structure of this video as a mermaid flowchart TD diagram inside a ```mermaid fence. " +
+      "Then add one or two short sentences explaining it.",
+    chatInputPlaceholder: "Ask about this video...",
+    chatSendBtn: "Send",
+    shortcutsSummary: "⌨ Shortcuts",
+    shortcutsHelpHtml: `<strong>Modified mode shortcuts:</strong> A = previous sentence &nbsp; S = repeat sentence &nbsp; D = next sentence
+      <br><strong>Speak aloud:</strong> R = read the sentence with TTS
+      <br><strong>Speak a selection:</strong> select any text, then T = speak it in the language you are learning &nbsp; Shift+T = speak it in English. Works inside the explanation popup and the chat too.
+      <br><strong>Esc</strong> = pin this sentence &amp; pause the video, so TTS keeps speaking it instead of following playback. Esc again to resume.
+      <br><strong>Explanations:</strong> double-click a word &nbsp; E = sentence in easy English &nbsp; G = grammar
+      <br><strong>Breakdown:</strong> O (or Alt+O) = translate the sentence, then gloss it part by part, with a dictionary-form vocabulary list you can copy straight into Anki. Select a phrase first to break down just that phrase.
+      <br>R, E, G and O all target the sentence your mouse is on (or the highlighted one). Alt+S also works for E.`,
+    popupHintHtml: `Double-click a word &middot; point at a sentence + E for easy English &middot; G for grammar &middot; O for a part-by-part breakdown &middot; Esc to close
+  <br>Drag the bottom-right corner to widen this window &mdash; the width is remembered.`,
+    ytErr2: "Invalid video ID.",
+    ytErr5: "This video can't be played in the HTML5 player.",
+    ytErr100: "Video not found (it may have been removed or made private).",
+    ytErr101: "The video owner doesn't allow this video to be played in embedded players.",
+    ytErr150: "The video owner doesn't allow this video to be played in embedded players.",
+    ytErrGeneric: "YouTube player error (code {code}).",
+    playbackError: "Playback error: {msg}",
+    statusLoadingTranscript: "Loading transcript...",
+    statusSegmenting: "Segmenting into sentences (LLM)...",
+    statusLoadError: "Error: {message}",
+    noBookmarks: "No bookmarks yet. Star a sentence while shadowing to save it here.",
+    recBadgeWorth: "Worth shadowing",
+    explainPointHint: "Point the mouse at a sentence, or play one, then press E, G or O.",
+    explainLoading: "Loading…",
+    explainModeWord: "Word",
+    explainModeSentence: "Sentence",
+    explainModeGrammar: "Grammar",
+    explainModeBreakdown: "Breakdown",
+    labelMeaningHere: "Meaning here",
+    labelExample: "Example",
+    labelEasyEnglish: "In simple English",
+    labelWhatItMeans: "What it means",
+    labelStructure: "Structure",
+    labelTense: "Tense",
+    labelGrammarPoints: "Grammar points",
+    labelInEnglish: "In English",
+    labelPartByPart: "Part by part",
+    labelVocab: "Vocabulary (dictionary form)",
+    sayHearWord: "Hear this word on its own",
+    sayHearExample: "Hear this example sentence",
+    sayHearForm: "Hear this form",
+    sayHearPart: "Hear this part",
+    sayHearPassage: "Hear the whole passage",
+    sayHearDefault: "Hear this",
+    ankiCopyBtn: "📋 Copy for Anki",
+    ankiCopyTitle: "Copy every word as word;meaning;explanation, one card per line",
+    ankiCopyFail: "Could not copy: {message}",
+    ankiCopySuccess: (v) =>
+      `Copied ${v.n} word${v.n === 1 ? "" : "s"} for Anki. Import with ";" as the separator.`,
+    speakSelectEmpty: "Select some text first, then press T.",
+    speakTooLong: "That selection is too long to speak ({n} characters).",
+    speakFailToast: "Could not speak that: {message}",
+    ttsFailedGeneric: "TTS failed",
+    recommendScoring: "Scoring sentences for shadowing value...",
+    recommendFail: "Could not score sentences: {message}",
+    regenModifiedStatus: "Regenerating sentence segmentation...",
+    regenRawStatus: "Re-downloading raw transcript...",
+    chatEmptyWithVideo: "Ask a question, or try one of the buttons below.",
+    chatEmptyNoVideo: "Load a video to start asking questions.",
+    chatNeedVideo: "Load a video first.",
+    chatTokensCost: "~{k}k tokens ~${cost}/msg",
+    chatTruncatedWarn: "⚠ Only the first {time} of this video · {rest}",
+    diagramLoadFail: "Could not load the diagram library.",
+    diagramDrawFail: "Could not draw this diagram.",
+    requestFailed: "Request failed ({status}).",
+  },
+  ko: {
+    appTitle: "쉐도잉 연습 — 누구나 어떤 언어든 배울 수 있다",
+    langSelectTitle: "연습할 언어입니다. 영상을 불러오기 전에 선택하세요.",
+    videoInputPlaceholder: "유튜브 URL이나 동영상 ID를 붙여넣으세요...",
+    loadBtn: "불러오기",
+    historyDefaultOption: "-- 최근 영상 --",
+    uiLangToggleTitle: "인터페이스 및 설명 언어 전환",
+    themeToggleTitle: "라이트/다크 테마 전환",
+    themeToggleDark: "🌙 다크",
+    themeToggleLight: "☀️ 라이트",
+    bookmarksModeBtn: "⭐ 북마크",
+    modeModified: "수정됨",
+    modeOriginal: "원본",
+    modeSwitchTitle: "{to}(으)로 전환",
+    recommendBtn: "🎯 문장 추천",
+    recommendBtnTitle: "모든 문장을 채점하여 쉐도잉하기 가장 좋은 문장을 표시합니다",
+    recommendRatioTitle: "대본 중 표시할 비율",
+    ratioTop10: "상위 10%",
+    ratioTop20: "상위 20%",
+    ratioTop30: "상위 30%",
+    readingToggle: "あ 읽기",
+    readingToggleTitle: "각 단어 위의 발음 표시를 켜고 끕니다",
+    regenModifiedBtn: "🔄 문장 재생성",
+    regenModifiedBtnTitle: "수정된(문장 단위) 대본을 다시 생성합니다",
+    regenRawBtn: "🔄 원본 다시 받기",
+    regenRawBtnTitle: "원본 대본을 다시 내려받습니다",
+    flushDictBtn: "🗑 설명 캐시 지우기",
+    flushDictBtnTitle: "저장된 단어·문장·문법 설명을 모두 지웁니다",
+    transcriptStatusInitial: "시작하려면 영상을 불러오세요.",
+    colResizerTitle: "드래그하여 열 너비 조절 · 더블클릭하면 초기화",
+    ttsPlayBtn: "🔊 문장 재생 (TTS)",
+    slowToggle: "🐢 느리게",
+    slowToggleTitle:
+      "천천히 말합니다. 음성 자체가 느려지므로, 나중에 오디오 속도를 늦추는 것과 달리 성조와 억양이 정확하게 유지됩니다.",
+    autopauseLabel: "문장이 끝나면 자동 일시정지",
+    stayLabel: "문장에 머무르기",
+    stayLabelTitle:
+      "자동 일시정지가 발생하면 강조 표시를 다음 문장으로 넘기지 않고 방금 재생된 문장에 유지하여, R / TTS가 방금 들은 내용을 반복하도록 합니다.",
+    rowResizerTitle: "드래그하여 영상 크기 조절 · 더블클릭하면 초기화",
+    chatTitle: "💬 이 영상에 대해 질문하기",
+    chatClearBtn: "🗑 지우기",
+    chatClearTitle: "이 대화를 지웁니다",
+    chipSummarize: "📝 요약",
+    chipQuiz: "❓ 퀴즈 내기",
+    chipFlowchart: "🔀 순서도",
+    chipSummarizePrompt:
+      "이 영상을 5~8개의 요점으로 요약해 주세요. 각 요점마다 [mm:ss] 형식으로 시간을 표시해 주세요.",
+    chipQuizPrompt:
+      "이 영상에 대한 객관식 문제 5개를 만들어 주세요. 각 문제마다 A~D 네 개의 보기를 제시하고, " +
+      "마지막에 '### 정답' 제목 아래 정답을 정리해 주세요.",
+    chipFlowchartPrompt:
+      "이 영상의 구조를 ```mermaid 코드 블록 안에 flowchart TD 형식의 다이어그램으로 그려 주세요. " +
+      "그런 다음 이를 설명하는 짧은 문장을 한두 개 추가해 주세요.",
+    chatInputPlaceholder: "이 영상에 대해 질문하세요...",
+    chatSendBtn: "보내기",
+    shortcutsSummary: "⌨ 단축키",
+    shortcutsHelpHtml: `<strong>수정 모드 단축키:</strong> A = 이전 문장 &nbsp; S = 문장 반복 &nbsp; D = 다음 문장
+      <br><strong>소리내어 읽기:</strong> R = TTS로 문장 읽기
+      <br><strong>선택한 부분 읽기:</strong> 텍스트를 선택한 뒤 T = 학습 중인 언어로 읽기 &nbsp; Shift+T = 영어로 읽기. 설명 팝업과 채팅 안에서도 동작합니다.
+      <br><strong>Esc</strong> = 이 문장을 고정하고 영상을 일시정지하여, TTS가 재생을 따라가지 않고 이 문장을 계속 읽도록 합니다. 다시 Esc를 누르면 재생을 이어갑니다.
+      <br><strong>설명:</strong> 단어를 더블클릭 &nbsp; E = 쉬운 설명으로 문장 보기 &nbsp; G = 문법
+      <br><strong>분석:</strong> O (또는 Alt+O) = 문장을 번역한 뒤 부분별로 풀이하고, Anki에 바로 복사할 수 있는 사전형 어휘 목록도 함께 보여줍니다. 문구를 먼저 선택하면 그 부분만 분석합니다.
+      <br>R, E, G, O는 모두 마우스가 놓인 문장(또는 강조 표시된 문장)을 대상으로 합니다. Alt+S도 E와 동일하게 동작합니다.`,
+    popupHintHtml: `단어를 더블클릭 &middot; 문장에 마우스를 놓고 E로 쉬운 설명 &middot; G로 문법 &middot; O로 부분별 분석 &middot; Esc로 닫기
+  <br>오른쪽 아래 모서리를 드래그하면 창 너비를 조절할 수 있습니다 &mdash; 너비는 저장됩니다.`,
+    ytErr2: "잘못된 동영상 ID입니다.",
+    ytErr5: "이 동영상은 HTML5 플레이어에서 재생할 수 없습니다.",
+    ytErr100: "동영상을 찾을 수 없습니다 (삭제되었거나 비공개로 전환되었을 수 있습니다).",
+    ytErr101: "동영상 소유자가 이 동영상을 외부 사이트에 삽입하여 재생하는 것을 허용하지 않습니다.",
+    ytErr150: "동영상 소유자가 이 동영상을 외부 사이트에 삽입하여 재생하는 것을 허용하지 않습니다.",
+    ytErrGeneric: "유튜브 플레이어 오류 (코드 {code}).",
+    playbackError: "재생 오류: {msg}",
+    statusLoadingTranscript: "대본을 불러오는 중...",
+    statusSegmenting: "문장으로 나누는 중 (LLM)...",
+    statusLoadError: "오류: {message}",
+    noBookmarks: "아직 북마크가 없습니다. 쉐도잉하면서 문장에 별표를 눌러 저장하세요.",
+    recBadgeWorth: "쉐도잉할 가치가 있음",
+    explainPointHint: "마우스를 문장 위에 놓거나 문장을 재생한 뒤 E, G, O 중 하나를 누르세요.",
+    explainLoading: "불러오는 중…",
+    explainModeWord: "단어",
+    explainModeSentence: "문장",
+    explainModeGrammar: "문법",
+    explainModeBreakdown: "분석",
+    labelMeaningHere: "여기서의 의미",
+    labelExample: "예문",
+    labelEasyEnglish: "쉬운 설명",
+    labelWhatItMeans: "실제 의미",
+    labelStructure: "구조",
+    labelTense: "시제",
+    labelGrammarPoints: "문법 포인트",
+    labelInEnglish: "번역",
+    labelPartByPart: "부분별 분석",
+    labelVocab: "어휘 (사전형)",
+    sayHearWord: "이 단어만 따로 듣기",
+    sayHearExample: "이 예문 듣기",
+    sayHearForm: "이 형태 듣기",
+    sayHearPart: "이 부분 듣기",
+    sayHearPassage: "전체 구절 듣기",
+    sayHearDefault: "듣기",
+    ankiCopyBtn: "📋 Anki용 복사",
+    ankiCopyTitle: "각 단어를 단어;의미;설명 형식으로 한 줄씩 복사합니다",
+    ankiCopyFail: "복사하지 못했습니다: {message}",
+    ankiCopySuccess: (v) => `단어 ${v.n}개를 Anki용으로 복사했습니다. 구분자 ";"로 가져오세요.`,
+    speakSelectEmpty: "먼저 텍스트를 선택한 뒤 T를 누르세요.",
+    speakTooLong: "선택한 텍스트가 너무 길어서 읽을 수 없습니다 ({n}자).",
+    speakFailToast: "읽을 수 없습니다: {message}",
+    ttsFailedGeneric: "TTS 실패",
+    recommendScoring: "쉐도잉 가치를 기준으로 문장을 채점하는 중...",
+    recommendFail: "문장을 채점하지 못했습니다: {message}",
+    regenModifiedStatus: "문장 분할을 다시 생성하는 중...",
+    regenRawStatus: "원본 대본을 다시 받는 중...",
+    chatEmptyWithVideo: "질문을 입력하거나 아래 버튼을 눌러보세요.",
+    chatEmptyNoVideo: "질문을 시작하려면 영상을 먼저 불러오세요.",
+    chatNeedVideo: "먼저 영상을 불러오세요.",
+    chatTokensCost: "~{k}k 토큰 ~${cost}/메시지",
+    chatTruncatedWarn: "⚠ 이 영상의 처음 {time}만 반영됨 · {rest}",
+    diagramLoadFail: "다이어그램 라이브러리를 불러오지 못했습니다.",
+    diagramDrawFail: "이 다이어그램을 그리지 못했습니다.",
+    requestFailed: "요청이 실패했습니다 ({status}).",
+  },
+};
+
+const UI_LANG_KEY = "shadowing.uilang.v1";
+let uiLang = "en";
+
+// {key} placeholders are substituted from vars; a value may also be a function
+// of vars, for the one case (Anki's word count) that needs real pluralization
+// logic rather than a fixed template.
+function t(key, vars) {
+  const table = STRINGS[uiLang] || STRINGS.en;
+  let val = key in table ? table[key] : STRINGS.en[key];
+  if (val === undefined) return key;
+  if (typeof val === "function") return val(vars || {});
+  if (vars) {
+    for (const k in vars) val = val.split(`{${k}}`).join(vars[k]);
+  }
+  return val;
+}
+
+function uiLangToggleLabel() {
+  return uiLang === "ko" ? "EN" : "한국어";
+}
+
+// The language name shown in the target-language picker: Korean when the UI
+// is in Korean and the profile has one, its own native-script name otherwise.
+function langLabel(prof) {
+  return uiLang === "ko" && prof.name_ko ? prof.name_ko : prof.native;
+}
+
+function populateLangSelect() {
+  el.langSelect.innerHTML = "";
+  for (const prof of Object.values(state.langs)) {
+    const opt = document.createElement("option");
+    opt.value = prof.code;
+    opt.textContent = langLabel(prof);
+    el.langSelect.appendChild(opt);
+  }
+}
+
+function applyUiLang(lang) {
+  uiLang = lang === "ko" ? "ko" : "en";
+  document.documentElement.lang = uiLang;
+  document.title = t("appTitle");
+
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((node) => {
+    node.title = t(node.dataset.i18nTitle);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.placeholder = t(node.dataset.i18nPlaceholder);
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((node) => {
+    node.innerHTML = t(node.dataset.i18nHtml);
+  });
+
+  el.uiLangToggle.textContent = uiLangToggleLabel();
+
+  // These re-render from state rather than a static attribute, so the walk
+  // above can't reach them.
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  syncModeButtons();
+  if (!state.chat.messages.length) renderChatEmptyState();
+  if (Object.keys(state.langs).length) {
+    populateLangSelect();
+    el.langSelect.value = state.lang;
+    refreshHistory();
+  }
+}
+
+function loadUiLang() {
+  let lang = "en";
+  try {
+    lang = localStorage.getItem(UI_LANG_KEY) || "en";
+  } catch {
+    lang = "en";
+  }
+  applyUiLang(lang);
+}
+
+el.uiLangToggle.addEventListener("click", () => {
+  const next = uiLang === "ko" ? "en" : "ko";
+  applyUiLang(next);
+  try {
+    localStorage.setItem(UI_LANG_KEY, next);
+  } catch {
+    /* private mode / quota - the toggle still works, it just won't persist */
+  }
+});
+
 // A brief message that doesn't disturb anything. #transcript-status is the
 // transcript panel's own line and already carries loading, error and empty-
 // bookmark states, so borrowing it for passing feedback would fight those.
@@ -115,7 +456,7 @@ function toast(message) {
 // when it is missing, but that is a safety net for a hand-typed URL -- the app
 // itself always knows which language it loaded a video under.
 function videoUrl(path, params = {}) {
-  const qs = new URLSearchParams({ lang: state.lang, ...params });
+  const qs = new URLSearchParams({ lang: state.lang, explain_lang: uiLang, ...params });
   return `/api/videos/${state.videoId}${path}?${qs}`;
 }
 
@@ -237,18 +578,15 @@ window.onYouTubeIframeAPIReady = function () {
   }
 };
 
-const YT_ERROR_MESSAGES = {
-  2: "Invalid video ID.",
-  5: "This video can't be played in the HTML5 player.",
-  100: "Video not found (it may have been removed or made private).",
-  101: "The video owner doesn't allow this video to be played in embedded players.",
-  150: "The video owner doesn't allow this video to be played in embedded players.",
-};
+function ytErrorMessage(code) {
+  const key = `ytErr${code}`;
+  return key in STRINGS.en ? t(key) : t("ytErrGeneric", { code });
+}
 
 function onPlayerError(e) {
-  const msg = YT_ERROR_MESSAGES[e.data] || `YouTube player error (code ${e.data}).`;
+  const msg = ytErrorMessage(e.data);
   console.error("YouTube player error:", e.data, msg);
-  el.status.textContent = `Playback error: ${msg}`;
+  el.status.textContent = t("playbackError", { msg });
   el.status.classList.remove("hidden");
 }
 
@@ -405,13 +743,7 @@ function setLanguage(code) {
 async function initLanguages() {
   const resp = await fetch("/api/languages").then((r) => r.json());
   state.langs = Object.fromEntries(resp.languages.map((p) => [p.code, p]));
-  el.langSelect.innerHTML = "";
-  for (const prof of resp.languages) {
-    const opt = document.createElement("option");
-    opt.value = prof.code;
-    opt.textContent = prof.native;
-    el.langSelect.appendChild(opt);
-  }
+  populateLangSelect();
   state.lang = state.langs[resp.default] ? resp.default : resp.languages[0].code;
   el.langSelect.value = state.lang;
   renderVoiceToggle();
@@ -432,7 +764,7 @@ el.readingToggle.addEventListener("click", () => {
 async function refreshHistory() {
   const videos = await fetch("/api/videos").then((r) => r.json());
   state.history = {};
-  el.historySelect.innerHTML = '<option value="">-- Recent videos --</option>';
+  el.historySelect.innerHTML = `<option value="">${t("historyDefaultOption")}</option>`;
 
   const byLang = new Map();
   for (const v of videos) {
@@ -447,7 +779,7 @@ async function refreshHistory() {
 
   for (const code of order) {
     const group = document.createElement("optgroup");
-    group.label = (state.langs[code] && state.langs[code].native) || code;
+    group.label = (state.langs[code] && langLabel(state.langs[code])) || code;
     for (const v of byLang.get(code)) {
       const opt = document.createElement("option");
       opt.value = v.video_id;
@@ -462,7 +794,7 @@ async function refreshHistory() {
 async function loadVideo(urlOrId, lang = state.lang) {
   if (!urlOrId) return;
   setLanguage(lang);
-  el.status.textContent = "Loading transcript...";
+  el.status.textContent = t("statusLoadingTranscript");
   el.status.classList.remove("hidden");
   el.list.innerHTML = "";
 
@@ -477,7 +809,7 @@ async function loadVideo(urlOrId, lang = state.lang) {
       return r.json();
     });
   } catch (err) {
-    el.status.textContent = `Error: ${err.message}`;
+    el.status.textContent = t("statusLoadError", { message: err.message });
     return;
   }
 
@@ -493,7 +825,7 @@ async function loadVideo(urlOrId, lang = state.lang) {
   loadPlayer(state.videoId);
   refreshHistory();
 
-  el.status.textContent = "Segmenting into sentences (LLM)...";
+  el.status.textContent = t("statusSegmenting");
   const modResp = await fetch(videoUrl("/transcript", { mode: "modified" })).then((r) => r.json());
   state.modified = modResp.sentences;
   buildChunkMap();
@@ -591,7 +923,7 @@ function render() {
       );
     }
     if (state.mode === "bookmarks" && sentences.length === 0) {
-      el.status.textContent = "No bookmarks yet. Star a sentence while shadowing to save it here.";
+      el.status.textContent = t("noBookmarks");
       el.status.classList.remove("hidden");
     } else {
       el.status.classList.add("hidden");
@@ -640,7 +972,7 @@ function buildRecBadge(sentenceIdx) {
   badge.className = "rec-badge";
   badge.textContent = "🎯";
   const parts = [entry.tag, entry.reason].filter(Boolean);
-  badge.title = parts.length ? `${parts.join(" · ")} (${entry.score})` : "Worth shadowing";
+  badge.title = parts.length ? `${parts.join(" · ")} (${entry.score})` : t("recBadgeWorth");
   return badge;
 }
 
@@ -778,10 +1110,10 @@ async function toggleBookmark(sentenceIdx, starEl) {
 // ---- Explanation popup ----
 // Double-click explains the word; Alt+S and Alt+G explain the whole sentence.
 const EXPLAIN_MODES = {
-  word: { label: "Word", path: "word" },
-  sentence: { label: "Sentence", path: "sentence" },
-  grammar: { label: "Grammar", path: "grammar" },
-  breakdown: { label: "Breakdown", path: "breakdown" },
+  word: { labelKey: "explainModeWord", path: "word" },
+  sentence: { labelKey: "explainModeSentence", path: "sentence" },
+  grammar: { labelKey: "explainModeGrammar", path: "grammar" },
+  breakdown: { labelKey: "explainModeBreakdown", path: "breakdown" },
 };
 
 el.list.addEventListener("dblclick", (e) => {
@@ -826,7 +1158,7 @@ async function openExplain(mode, { word = null, sentenceIdx = null, text = null 
   if (idx === null || idx === undefined) {
     // Nothing to aim at - tell the reader how to pick a sentence.
     showExplainShell(mode, "", null);
-    renderExplainError("Point the mouse at a sentence, or play one, then press E, G or O.");
+    renderExplainError(t("explainPointHint"));
     return;
   }
 
@@ -847,7 +1179,7 @@ async function openExplain(mode, { word = null, sentenceIdx = null, text = null 
     return;
   }
 
-  el.popupBody.innerHTML = '<div class="explain-loading">Loading…</div>';
+  el.popupBody.innerHTML = `<div class="explain-loading">${t("explainLoading")}</div>`;
 
   const body =
     mode === "word"
@@ -862,7 +1194,7 @@ async function openExplain(mode, { word = null, sentenceIdx = null, text = null 
       body: JSON.stringify(body),
     });
     if (!resp.ok) {
-      let detail = `Request failed (${resp.status}).`;
+      let detail = t("requestFailed", { status: resp.status });
       try {
         detail = (await resp.json()).detail || detail;
       } catch (_) {
@@ -884,7 +1216,7 @@ function showExplainShell(mode, title, subtitle) {
   state.explain.open = true; // suppresses the A/S/D playback shortcuts
   el.popup.classList.remove("hidden");
   el.popupOverlay.classList.remove("hidden");
-  el.popupMode.textContent = EXPLAIN_MODES[mode].label;
+  el.popupMode.textContent = t(EXPLAIN_MODES[mode].labelKey);
   el.popupTitle.textContent = title;
   el.popupTitle.classList.toggle("is-sentence", mode !== "word");
   el.popupBody.innerHTML = "";
@@ -934,16 +1266,16 @@ function renderExplain(mode, result) {
     }
     // A word on its own is the one thing the video's audio can never give you,
     // and for a tonal language it is exactly what you need to hear.
-    head.appendChild(sayButton(result.word, "Hear this word on its own"));
+    head.appendChild(sayButton(result.word, t("sayHearWord")));
     el.popupBody.appendChild(head);
 
-    el.popupBody.appendChild(explainSection("Meaning here", result.definition));
+    el.popupBody.appendChild(explainSection(t("labelMeaningHere"), result.definition));
 
-    const example = explainSection("Example", result.example);
+    const example = explainSection(t("labelExample"), result.example);
     example.querySelector(".explain-value").classList.add("is-example");
     example
       .querySelector(".explain-label")
-      .appendChild(sayButton(result.example, "Hear this example sentence"));
+      .appendChild(sayButton(result.example, t("sayHearExample")));
     // Non-English languages return the gloss as its own field, so the spoken
     // half stays pure. Shown under the sentence rather than inside it.
     if (result.example_english) {
@@ -959,10 +1291,10 @@ function renderExplain(mode, result) {
   if (mode === "sentence") {
     // Labelled for both jobs it does: a simpler rewrite when the transcript is
     // English, a plain translation when it is not.
-    const easy = explainSection("In simple English", result.easy_english);
+    const easy = explainSection(t("labelEasyEnglish"), result.easy_english);
     easy.classList.add("easy-english");
     el.popupBody.appendChild(easy);
-    el.popupBody.appendChild(explainSection("What it means", result.meaning));
+    el.popupBody.appendChild(explainSection(t("labelWhatItMeans"), result.meaning));
     return;
   }
 
@@ -971,14 +1303,14 @@ function renderExplain(mode, result) {
     return;
   }
 
-  el.popupBody.appendChild(explainSection("Structure", result.structure));
-  el.popupBody.appendChild(explainSection("Tense", result.tense));
+  el.popupBody.appendChild(explainSection(t("labelStructure"), result.structure));
+  el.popupBody.appendChild(explainSection(t("labelTense"), result.tense));
   if (result.points && result.points.length) {
     const section = document.createElement("div");
     section.className = "explain-section";
     const heading = document.createElement("div");
     heading.className = "explain-label";
-    heading.textContent = "Grammar points";
+    heading.textContent = t("labelGrammarPoints");
     section.appendChild(heading);
     for (const point of result.points) {
       const row = document.createElement("div");
@@ -991,8 +1323,9 @@ function renderExplain(mode, result) {
       note.textContent = point.note;
       row.appendChild(form);
       // The fragment is quoted from the sentence, so it is in the language
-      // being learned even though the note beside it is in English.
-      if (point.form) row.appendChild(sayButton(point.form, "Hear this form"));
+      // being learned even though the note beside it is in the explanation
+      // language.
+      if (point.form) row.appendChild(sayButton(point.form, t("sayHearForm")));
       row.appendChild(note);
       section.appendChild(row);
     }
@@ -1009,13 +1342,13 @@ function renderBreakdown(result) {
   // The whole passage, spoken as one clip, before it is taken apart.
   const head = document.createElement("div");
   head.className = "explain-wordhead";
-  head.appendChild(sayButton(result.text, "Hear the whole passage"));
+  head.appendChild(sayButton(result.text, t("sayHearPassage")));
   el.popupBody.appendChild(head);
 
   // Labelled the way "In simple English" is: the server sends a translation for
-  // a foreign transcript and a simpler rewrite for an English one, and both are
-  // honestly described as English you can read.
-  const english = explainSection("In English", result.translation);
+  // a foreign transcript and a simpler rewrite for an English one, in whichever
+  // explanation language is currently selected.
+  const english = explainSection(t("labelInEnglish"), result.translation);
   english.classList.add("easy-english");
   el.popupBody.appendChild(english);
 
@@ -1024,7 +1357,7 @@ function renderBreakdown(result) {
     section.className = "explain-section";
     const heading = document.createElement("div");
     heading.className = "explain-label";
-    heading.textContent = "Part by part";
+    heading.textContent = t("labelPartByPart");
     section.appendChild(heading);
     for (const part of result.parts) {
       const row = document.createElement("div");
@@ -1034,8 +1367,9 @@ function renderBreakdown(result) {
       form.textContent = part.part;
       row.appendChild(form);
       // The part is quoted from the passage, so it is in the language being
-      // learned; the gloss beside it is English and gets no button.
-      row.appendChild(sayButton(part.part, "Hear this part"));
+      // learned; the gloss beside it is in the explanation language and gets
+      // no button.
+      row.appendChild(sayButton(part.part, t("sayHearPart")));
       const gloss = document.createElement("span");
       gloss.className = "breakdown-gloss";
       gloss.textContent = part.gloss;
@@ -1051,12 +1385,12 @@ function renderBreakdown(result) {
   section.className = "explain-section";
   const heading = document.createElement("div");
   heading.className = "explain-label vocab-heading";
-  heading.textContent = "Vocabulary (dictionary form)";
+  heading.textContent = t("labelVocab");
 
   const copy = document.createElement("button");
   copy.className = "anki-copy";
-  copy.textContent = "📋 Copy for Anki";
-  copy.title = "Copy every word as word;meaning;explanation, one card per line";
+  copy.textContent = t("ankiCopyBtn");
+  copy.title = t("ankiCopyTitle");
   copy.addEventListener("click", () => copyForAnki(result.vocab));
   heading.appendChild(copy);
   section.appendChild(heading);
@@ -1069,7 +1403,7 @@ function renderBreakdown(result) {
     line.className = "vocab-line";
     // The dictionary form on its own is the thing the video audio never says -
     // it only ever speaks the inflected form - so it gets the button.
-    line.appendChild(sayButton(entry.word, "Hear this word on its own"));
+    line.appendChild(sayButton(entry.word, t("sayHearWord")));
     const word = document.createElement("span");
     word.className = "vocab-word";
     word.textContent = entry.word;
@@ -1137,12 +1471,12 @@ async function copyForAnki(vocab) {
     }
     scratch.remove();
     if (!ok) {
-      toast(`Could not copy: ${err.message}`);
+      toast(t("ankiCopyFail", { message: err.message }));
       return;
     }
   }
   const n = vocab.length;
-  toast(`Copied ${n} word${n === 1 ? "" : "s"} for Anki. Import with ";" as the separator.`);
+  toast(t("ankiCopySuccess", { n }));
 }
 
 function renderExplainError(message) {
@@ -1211,7 +1545,7 @@ async function playFromServer(url, body, voice = state.voice) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...body, voice, slow: state.slowSpeech }),
   });
-  if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).detail || "TTS failed");
+  if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).detail || t("ttsFailedGeneric"));
   const blob = await resp.blob();
   stopAudio();
   ttsAudio = new Audio(URL.createObjectURL(blob));
@@ -1243,7 +1577,7 @@ async function speakWord(text, { lang = state.lang, voice = state.voice } = {}) 
     // The browser fallback only covers languages the machine has voices for, so
     // say something rather than letting a silent no-op look like a dead key.
     console.warn("Server TTS failed, falling back to the browser:", err.message);
-    toast(`Could not speak that: ${err.message}`);
+    toast(t("speakFailToast", { message: err.message }));
     // Fall back in the language that was asked for, not the one selected in the
     // toolbar -- otherwise Shift+T would retry English in a Japanese voice.
     speakText(text, voice ? voiceLocale(voice) : localeForLang(lang));
@@ -1259,11 +1593,11 @@ const MAX_SPEAK_CHARS = 1000;
 function speakSelection(useEnglish) {
   const text = selectionText();
   if (!text) {
-    toast("Select some text first, then press T.");
+    toast(t("speakSelectEmpty"));
     return;
   }
   if (text.length > MAX_SPEAK_CHARS) {
-    toast(`That selection is too long to speak (${text.length} characters).`);
+    toast(t("speakTooLong", { n: text.length }));
     return;
   }
   // voice: null lets the server pick the English profile's own default, which
@@ -1274,7 +1608,7 @@ function speakSelection(useEnglish) {
 // Attached only to text that really is in the language being learned. An
 // English definition spoken by a Japanese voice is noise, so those fields get
 // no button at all.
-function sayButton(text, title = "Hear this") {
+function sayButton(text, title = t("sayHearDefault")) {
   const btn = document.createElement("button");
   btn.className = "explain-say";
   btn.textContent = "🔊";
@@ -1332,7 +1666,7 @@ function syncStayToggle() {
 }
 
 // ---- Mode toggle ----
-const MODE_LABELS = { modified: "Modified", raw: "Original" };
+const MODE_LABEL_KEYS = { modified: "modeModified", raw: "modeOriginal" };
 
 function setMode(mode) {
   state.mode = mode;
@@ -1343,8 +1677,8 @@ function setMode(mode) {
 
 function syncModeButtons() {
   const other = state.transcriptMode === "modified" ? "raw" : "modified";
-  el.transcriptModeBtn.textContent = `⇄ ${MODE_LABELS[state.transcriptMode]}`;
-  el.transcriptModeBtn.title = `Switch to ${MODE_LABELS[other]}`;
+  el.transcriptModeBtn.textContent = `⇄ ${t(MODE_LABEL_KEYS[state.transcriptMode])}`;
+  el.transcriptModeBtn.title = t("modeSwitchTitle", { to: t(MODE_LABEL_KEYS[other]) });
   el.transcriptModeBtn.classList.toggle("active", state.mode !== "bookmarks");
   el.bookmarksModeBtn.classList.toggle("active", state.mode === "bookmarks");
 }
@@ -1363,12 +1697,12 @@ syncModeButtons();
 el.recommendBtn.addEventListener("click", async () => {
   if (!state.videoId) return;
   el.recommendBtn.disabled = true;
-  el.status.textContent = "Scoring sentences for shadowing value...";
+  el.status.textContent = t("recommendScoring");
   el.status.classList.remove("hidden");
   try {
     const resp = await fetch(videoUrl("/recommendations"), { method: "POST" });
     if (!resp.ok) {
-      let detail = `Request failed (${resp.status}).`;
+      let detail = t("requestFailed", { status: resp.status });
       try {
         detail = (await resp.json()).detail || detail;
       } catch (_) {
@@ -1382,7 +1716,7 @@ el.recommendBtn.addEventListener("click", async () => {
     el.status.classList.add("hidden");
     render();
   } catch (err) {
-    el.status.textContent = `Could not score sentences: ${err.message}`;
+    el.status.textContent = t("recommendFail", { message: err.message });
   } finally {
     el.recommendBtn.disabled = false;
   }
@@ -1398,7 +1732,7 @@ el.recommendRatio.addEventListener("change", () => {
 // ---- Cache controls ----
 el.regenModifiedBtn.addEventListener("click", async () => {
   if (!state.videoId) return;
-  el.status.textContent = "Regenerating sentence segmentation...";
+  el.status.textContent = t("regenModifiedStatus");
   el.status.classList.remove("hidden");
   const resp = await fetch(videoUrl("/regenerate", { target: "modified" }), { method: "POST" }).then((r) => r.json());
   state.modified = resp.sentences;
@@ -1410,7 +1744,7 @@ el.regenModifiedBtn.addEventListener("click", async () => {
 
 el.regenRawBtn.addEventListener("click", async () => {
   if (!state.videoId) return;
-  el.status.textContent = "Re-downloading raw transcript...";
+  el.status.textContent = t("regenRawStatus");
   el.status.classList.remove("hidden");
   const resp = await fetch(videoUrl("/regenerate", { target: "raw" }), { method: "POST" }).then((r) => r.json());
   state.raw = resp.sentences;
@@ -1539,7 +1873,7 @@ function loadMermaid() {
       script.onerror = () => {
         // Cleared so a later attempt can retry rather than reject forever.
         mermaidPromise = null;
-        reject(new Error("Could not load the diagram library."));
+        reject(new Error(t("diagramLoadFail")));
       };
       document.head.appendChild(script);
     });
@@ -1569,7 +1903,7 @@ async function renderDiagrams(container, diagrams) {
     } catch (_) {
       // Model-written mermaid is not always valid. Falling back to the source
       // beats an empty box, and must never throw out of the reply render.
-      showDiagramSource(box, "Could not draw this diagram.", srcOf(box));
+      showDiagramSource(box, t("diagramDrawFail"), srcOf(box));
     }
     scrollChatToBottom();
   }
@@ -1617,9 +1951,7 @@ function renderChatEmptyState() {
   el.chatLog.textContent = "";
   const hint = document.createElement("div");
   hint.id = "chat-empty";
-  hint.textContent = state.videoId
-    ? "Ask a question, or try one of the buttons below."
-    : "Load a video to start asking questions.";
+  hint.textContent = state.videoId ? t("chatEmptyWithVideo") : t("chatEmptyNoVideo");
   el.chatLog.appendChild(hint);
 }
 
@@ -1644,22 +1976,17 @@ function setChatEnabled(enabled) {
 }
 
 // ---- Chat: sending ----
-const CHIP_PROMPTS = {
-  summarize:
-    "Summarize this video in 5 to 8 bullet points. Cite [mm:ss] for each point.",
-  quiz:
-    "Make 5 multiple-choice questions about this video. Give four options A to D " +
-    "for each one, then list the correct answers under an '### Answers' heading at the end.",
-  flowchart:
-    "Draw the structure of this video as a mermaid flowchart TD diagram inside a " +
-    "```mermaid fence. Then add one or two short sentences explaining it.",
+const CHIP_PROMPT_KEYS = {
+  summarize: "chipSummarizePrompt",
+  quiz: "chipQuizPrompt",
+  flowchart: "chipFlowchartPrompt",
 };
 
 async function sendChat(text) {
   const question = text.trim();
   if (!question || state.chat.busy) return;
   if (!state.videoId) {
-    el.chatMeta.textContent = "Load a video first.";
+    el.chatMeta.textContent = t("chatNeedVideo");
     el.chatMeta.classList.add("warn");
     return;
   }
@@ -1687,7 +2014,7 @@ async function sendChat(text) {
       body: JSON.stringify({ messages: state.chat.messages }),
     });
     if (!resp.ok) {
-      let detail = `Request failed (${resp.status}).`;
+      let detail = t("requestFailed", { status: resp.status });
       try {
         detail = (await resp.json()).detail || detail;
       } catch (_) {
@@ -1723,9 +2050,9 @@ function updateChatMeta(result) {
   // $0.15/1M input, a 30k-token transcript is well under a cent per message.
   const tokens = result.context_tokens || 0;
   const cost = ((tokens / 1e6) * 0.15).toFixed(3);
-  let text = `~${Math.round(tokens / 1000)}k tokens ~$${cost}/msg`;
+  let text = t("chatTokensCost", { k: Math.round(tokens / 1000), cost });
   if (result.truncated) {
-    text = `⚠ Only the first ${fmtTime(result.covered_until)} of this video · ${text}`;
+    text = t("chatTruncatedWarn", { time: fmtTime(result.covered_until), rest: text });
   }
   el.chatMeta.textContent = text;
   el.chatMeta.classList.toggle("warn", !!result.truncated);
@@ -1750,7 +2077,7 @@ el.chatInput.addEventListener("keydown", (e) => {
 
 el.chatChips.addEventListener("click", (e) => {
   const chip = e.target.closest(".chat-chip");
-  if (chip) sendChat(CHIP_PROMPTS[chip.dataset.prompt] || "");
+  if (chip) sendChat(t(CHIP_PROMPT_KEYS[chip.dataset.prompt]) || "");
 });
 
 el.chatClear.addEventListener("click", resetChat);
@@ -1769,6 +2096,9 @@ state.autoPauseEnabled = el.autopauseToggle.checked;
 state.stayOnSentence = el.stayToggle.checked;
 syncStayToggle();
 state.recommendRatio = parseFloat(el.recommendRatio.value);
+// Before languages: the picker's labels themselves depend on it, and
+// populateLangSelect() below needs uiLang set correctly on the first pass.
+loadUiLang();
 // Languages first: the history dropdown groups by them, and the load flow
 // needs a language before it can ask for anything.
 initLanguages().then(refreshHistory);
@@ -1960,3 +2290,35 @@ window.addEventListener("resize", applyLayout);
 
 loadLayout();
 applyLayout();
+
+// ---- Theme ----
+// Light is the default so the app opens bright; a returning visitor's last
+// choice is remembered the same way the pane layout is.
+const THEME_KEY = "shadowing.theme.v1";
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  el.themeToggle.textContent = theme === "dark" ? t("themeToggleLight") : t("themeToggleDark");
+}
+
+function loadTheme() {
+  let theme = "light";
+  try {
+    theme = localStorage.getItem(THEME_KEY) || "light";
+  } catch {
+    theme = "light";
+  }
+  applyTheme(theme);
+}
+
+el.themeToggle.addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    /* private mode / quota - the toggle still works, it just won't persist */
+  }
+});
+
+loadTheme();

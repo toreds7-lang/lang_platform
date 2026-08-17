@@ -9,12 +9,36 @@ class ExplainError(Exception):
     """The LLM call failed, or returned something that wasn't usable JSON."""
 
 
+# The explanation language is a request-level setting, independent of the
+# target language being learned (see languages.py) -- explaining Japanese
+# grammar in Korean is exactly as valid as explaining it in English.
+def _explain_lang_name(explain_lang: str) -> str:
+    return "Korean" if explain_lang == "ko" else "English"
+
+
+def _register_phrase(explain_lang: str) -> str:
+    """"simple English" / "natural Korean" -- dropped into inline field rules."""
+    if explain_lang == "ko":
+        return "natural Korean"
+    return "simple English"
+
+
 # Every explanation is aimed at a learner who is still building vocabulary, so
 # the register is pinned here once rather than restated in each prompt.
-_SIMPLE_ENGLISH_RULE = (
-    "Write every explanation in simple English (CEFR A2-B1). Use short sentences and "
-    "common words. Never explain a hard word with another hard word."
-)
+# English is deliberately simplified (CEFR A2-B1): many learners read it as a
+# second language too. Korean is not simplified the same way -- a Korean
+# interface implies a fluent Korean reader, not one still learning Korean.
+def _explanation_rule(explain_lang: str) -> str:
+    if explain_lang == "ko":
+        return (
+            "Write every explanation in natural, fluent Korean. Use clear, precise "
+            "wording aimed at a fluent Korean reader -- there is no need to simplify "
+            "the Korean itself."
+        )
+    return (
+        "Write every explanation in simple English (CEFR A2-B1). Use short sentences and "
+        "common words. Never explain a hard word with another hard word."
+    )
 
 
 # A breakdown is produced in ONE call, so the part-by-part gloss and the
@@ -25,9 +49,11 @@ _SIMPLE_ENGLISH_RULE = (
 MAX_BREAKDOWN_CHARS = 400
 
 # The output format is far easier to specify by showing it than by describing
-# it. The example is Korean, which is deliberately NOT a registered language:
-# the model reads it as a demonstration of the shape, with no temptation to
-# copy its content into the language it is actually working in.
+# it. The example is Korean. Korean is a valid *explanation* language (see
+# _explanation_rule above) but still not a registered *target* language in
+# languages.py, so the model reads this purely as a demonstration of the
+# shape, with no temptation to copy its content into the target language it
+# is actually working in.
 #
 # Three joiners appear in it on purpose, and all three have to survive into the
 # real output: ", " between separate words, " + " between the pieces of one
@@ -86,7 +112,7 @@ def _complete_json(prompt: str) -> dict:
 
 
 def explain_word(
-    word: str, sentence: str, before: list[str], after: list[str], prof: dict
+    word: str, sentence: str, before: list[str], after: list[str], prof: dict, explain_lang: str = "en"
 ) -> dict:
     keys = ""
     if prof["reading"]:
@@ -111,14 +137,15 @@ def explain_word(
             "romanization, and nothing in brackets. This field is read aloud by a "
             f"{prof['name']} voice, so anything that is not {prof['name']} will be "
             "mispronounced.\n"
-            '- "example_english": a plain English translation of that example sentence.'
+            f'- "example_english": a plain {_explain_lang_name(explain_lang)} translation of '
+            "that example sentence."
         )
 
     prompt = (
         f"You are helping {_learner(prof)} shadow-practice a video transcript. "
         f'The learner double-clicked the word "{word}" inside the sentence marked with >>> below.\n\n'
         f"Context (2 sentences before and after):\n{_context_block(sentence, before, after)}\n\n"
-        f"{_SIMPLE_ENGLISH_RULE}\n\n"
+        f"{_explanation_rule(explain_lang)}\n\n"
         "Explain the WORD ONLY. Do not explain the whole sentence.\n\n"
         "Respond with strict JSON only, with these keys:\n" + keys
     )
@@ -137,19 +164,20 @@ def explain_word(
 
 
 def explain_sentence(
-    sentence: str, before: list[str], after: list[str], prof: dict
+    sentence: str, before: list[str], after: list[str], prof: dict, explain_lang: str = "en"
 ) -> dict:
+    lang_name = _explain_lang_name(explain_lang)
     if prof["code"] == "en":
         easy = (
             '- "easy_english": the marked sentence rewritten so a beginner can understand it. '
             "Keep the same meaning, but use simpler words and simpler structure. You may split it "
-            "into two short sentences if that makes it clearer. Write the rewrite in English.\n"
+            f"into two short sentences if that makes it clearer. Write the rewrite in {lang_name}.\n"
         )
     else:
         # For a language the learner is only starting, "simplify it" is useless
         # -- they need to know what it says at all before anything else.
         easy = (
-            '- "easy_english": a plain English translation of the marked sentence, in simple '
+            f'- "easy_english": a plain {lang_name} translation of the marked sentence, in simple '
             "words. Keep the same meaning. You may split it into two short sentences if that "
             "makes it clearer.\n"
         )
@@ -157,7 +185,7 @@ def explain_sentence(
         f"You are helping {_learner(prof)} shadow-practice a video transcript. "
         "The learner asked about the sentence marked with >>> below.\n\n"
         f"Context (2 sentences before and after):\n{_context_block(sentence, before, after)}\n\n"
-        f"{_SIMPLE_ENGLISH_RULE}\n\n"
+        f"{_explanation_rule(explain_lang)}\n\n"
         "Respond with strict JSON only, with these keys:\n"
         + easy
         + '- "meaning": 1-2 short lines saying what the speaker really means, using the surrounding '
@@ -173,7 +201,7 @@ def explain_sentence(
 
 
 def explain_grammar(
-    sentence: str, before: list[str], after: list[str], prof: dict
+    sentence: str, before: list[str], after: list[str], prof: dict, explain_lang: str = "en"
 ) -> dict:
     focus = prof.get("grammar_focus", "")
     focus = f" Choose the points a learner would most likely stumble on: {focus}." if focus else ""
@@ -181,7 +209,7 @@ def explain_grammar(
         f"You are helping {_learner(prof)} shadow-practice a video transcript. "
         "The learner asked about the grammar of the sentence marked with >>> below.\n\n"
         f"Context (2 sentences before and after):\n{_context_block(sentence, before, after)}\n\n"
-        f"{_SIMPLE_ENGLISH_RULE}\n\n"
+        f"{_explanation_rule(explain_lang)}\n\n"
         "Explain the grammar of the marked sentence at SENTENCE level.\n\n"
         "Respond with strict JSON only, with these keys:\n"
         '- "structure": one line naming the subject, the verb, the object, and any extra clauses '
@@ -215,7 +243,7 @@ def explain_grammar(
 
 
 def break_down(
-    text: str, sentence: str, before: list[str], after: list[str], prof: dict
+    text: str, sentence: str, before: list[str], after: list[str], prof: dict, explain_lang: str = "en"
 ) -> dict:
     """Translate a passage, then gloss it part by part and list its vocabulary.
 
@@ -230,6 +258,7 @@ def break_down(
     """
     name = prof["name"]
     is_en = prof["code"] == "en"
+    lang_name = _explain_lang_name(explain_lang)
 
     if is_en:
         translation = (
@@ -245,14 +274,14 @@ def break_down(
         )
     else:
         translation = (
-            '- "translation": a plain English translation of the whole passage, in simple '
+            f'- "translation": a plain {lang_name} translation of the whole passage, in simple '
             "words. Keep the same meaning.\n"
         )
         gloss_rule = (
             f"Break each part into its pieces exactly the way the example does: the {name} "
-            'piece, then its English meaning in brackets. Use ", " between separate words and '
+            f'piece, then its {lang_name} meaning in brackets. Use ", " between separate words and '
             '" + " between the pieces of a single word. When a part cannot be broken down any '
-            "further, give its English meaning on its own with no brackets."
+            f"further, give its {lang_name} meaning on its own with no brackets."
         )
 
     # Same split, and the same reason, as "example" / "example_english" above:
@@ -270,11 +299,12 @@ def break_down(
     if prof["reading"]:
         vocab_keys += f'  - "reading": the {prof["reading"]} of that dictionary form.\n'
     vocab_keys += (
-        '  - "part_of_speech": one or two words, in English, for example "noun", "verb", '
+        f'  - "part_of_speech": one or two words, in {lang_name}, for example "noun", "verb", '
         '"adjective", "particle".\n'
-        '  - "meaning": a very short English meaning. A few words, not a sentence.\n'
-        '  - "explanation": one or two short lines of simple English about the word: what it '
-        "means, and anything worth knowing to use it correctly. This is the back of a flashcard."
+        f'  - "meaning": a very short {lang_name} meaning. A few words, not a sentence.\n'
+        f'  - "explanation": one or two short lines of {_register_phrase(explain_lang)} about the '
+        "word: what it means, and anything worth knowing to use it correctly. This is the back of "
+        "a flashcard."
     )
 
     prompt = (
@@ -283,7 +313,7 @@ def break_down(
         f"Passage to break down:\n{text}\n\n"
         f"Where it appears (the transcript line is marked with >>>):\n"
         f"{_context_block(sentence, before, after)}\n\n"
-        f"{_SIMPLE_ENGLISH_RULE}\n\n"
+        f"{_explanation_rule(explain_lang)}\n\n"
         "This is the format, shown on a Korean example. Yours must be in "
         f"{name}, not Korean -- the example is here only to show the shape:\n\n"
         f"{_BREAKDOWN_EXAMPLE}\n\n"
@@ -293,7 +323,7 @@ def break_down(
         "and nothing added. Each object has:\n"
         f'  - "part": the next chunk of the passage, copied exactly as written. {purity}'
         f"{word_note}\n"
-        f'  - "gloss": the English breakdown of that part. {gloss_rule}\n'
+        f'  - "gloss": the {lang_name} breakdown of that part. {gloss_rule}\n'
         '- "vocab": an array of at most 12 objects, one per word in the passage that is worth '
         "learning. Content words only -- skip particles, endings, and grammar markers, which the "
         '"gloss" column already explains. List each word once, even if it appears twice. Each '

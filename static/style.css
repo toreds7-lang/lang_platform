@@ -1,10 +1,77 @@
+/* ---- Theme tokens ------------------------------------------------------ */
+/* Light ("Fresh & Clean") is the default palette; html[data-theme="dark"]
+   overrides every token below to reproduce the original dark theme. */
+:root {
+  --bg: #ffffff;
+  --bg-panel: #f4f6fb;
+  --bg-panel-2: #eef1f7;
+  --bg-well: #eef2f8;
+  --bg-surface: #eef1f7;
+  --bg-surface-hover: #e2e6f0;
+  --bg-elevated: #eef1f7;
+  --bg-tint: #dbe7ff;
+  --bg-tint-hover: #eaf1ff;
+  --gold-tint-bg: rgba(181, 121, 15, 0.1);
+  --border: #d5d9e3;
+  --border-soft: #e2e5ec;
+  --border-dim: #e8eaf0;
+  --border-elevated: #c7ccd6;
+  --text: #1a1b20;
+  --on-accent: #ffffff;
+  --text-2: #3d4149;
+  --text-3: #565a63;
+  --text-4: #72767f;
+  --text-muted: #656974;
+  --text-dim: #8a8f9c;
+  --text-inactive: #9298a3;
+  --text-soft: #757b87;
+  --accent: #2f6fed;
+  --accent-text: #1d5fe0;
+  --accent-text-2: #2563c9;
+  --accent-text-3: #3a6fd0;
+  --gold: #b5790f;
+  --danger: #d64545;
+}
+
+html[data-theme="dark"] {
+  --bg: #1e1f24;
+  --bg-panel: #26272e;
+  --bg-panel-2: #202127;
+  --bg-well: #1a1b20;
+  --bg-surface: #33343c;
+  --bg-surface-hover: #43444e;
+  --bg-elevated: #2a2b32;
+  --bg-tint: #2f4571;
+  --bg-tint-hover: #2f3b57;
+  --gold-tint-bg: rgba(216, 162, 74, 0.08);
+  --border: #444;
+  --border-soft: #34353c;
+  --border-dim: #3a3b42;
+  --border-elevated: #4a4b55;
+  --text: #e6e6e6;
+  --on-accent: #fff;
+  --text-2: #ddd;
+  --text-3: #ccc;
+  --text-4: #aaa;
+  --text-muted: #999;
+  --text-dim: #777;
+  --text-inactive: #8b8d96;
+  --text-soft: #9aa0ad;
+  --accent: #3b6fd4;
+  --accent-text: #9ecbff;
+  --accent-text-2: #8fc7ff;
+  --accent-text-3: #7fa8e8;
+  --gold: #d8a24a;
+  --danger: #e58080;
+}
+
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
   font-family: -apple-system, Segoe UI, Roboto, sans-serif;
-  background: #1e1f24;
-  color: #e6e6e6;
+  background: var(--bg);
+  color: var(--text);
   /* Column layout so #app-main can claim the leftover height itself. The old
      calc(100vh - 100px) guessed at the header+toolbar height, and overflowed
      whenever the toolbar wrapped to a second row. */
@@ -18,40 +85,56 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: #26272e;
-  border-bottom: 1px solid #34353c;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+#theme-toggle,
+#ui-lang-toggle {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+#theme-toggle:hover,
+#ui-lang-toggle:hover {
+  background: var(--bg-surface-hover);
 }
 
 #video-input {
   flex: 1;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid #444;
-  background: #1a1b20;
-  color: #eee;
+  border: 1px solid var(--border);
+  background: var(--bg-well);
+  color: var(--text);
 }
 
 #load-btn, .mode-btn, .voice-btn, #toolbar button, #tts-play-btn, #slow-toggle, #popup-close,
 #chat-send, #chat-clear {
   cursor: pointer;
-  border: 1px solid #444;
-  background: #33343c;
-  color: #eee;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
   border-radius: 6px;
   padding: 8px 12px;
 }
 
 #load-btn:hover, .mode-btn:hover, .voice-btn:hover, #toolbar button:hover, #tts-play-btn:hover, #slow-toggle:hover,
 #chat-send:hover:not(:disabled), #chat-clear:hover {
-  background: #43444e;
+  background: var(--bg-surface-hover);
 }
 
 #history-select, #lang-select, #recommend-ratio {
   padding: 8px;
   border-radius: 6px;
-  background: #1a1b20;
-  color: #eee;
-  border: 1px solid #444;
+  background: var(--bg-well);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
 #toolbar button:disabled {
@@ -61,7 +144,7 @@ body {
 
 #video-title {
   font-weight: 600;
-  color: #9ecbff;
+  color: var(--accent-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -73,8 +156,8 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: #202127;
-  border-bottom: 1px solid #34353c;
+  background: var(--bg-panel-2);
+  border-bottom: 1px solid var(--border-soft);
   flex-wrap: wrap;
 }
 
@@ -84,21 +167,22 @@ body {
 }
 
 .mode-btn.active, .voice-btn.active {
-  background: #3b6fd4;
-  border-color: #3b6fd4;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 /* The modes you are not in recede, so the current view is obvious at a glance.
    Dimmed, not disabled - they stay clickable and light up on hover. */
 .mode-btn:not(.active) {
-  background: #2a2b32;
-  border-color: #3a3b42;
-  color: #8b8d96;
+  background: var(--bg-elevated);
+  border-color: var(--border-dim);
+  color: var(--text-inactive);
 }
 
 .mode-btn:not(.active):hover {
-  background: #43444e;
-  color: #eee;
+  background: var(--bg-surface-hover);
+  color: var(--text);
 }
 
 #app-main {
@@ -118,7 +202,7 @@ body {
 }
 
 #transcript-status {
-  color: #999;
+  color: var(--text-muted);
   padding: 8px 0;
 }
 
@@ -142,8 +226,8 @@ body {
    those two still win - which sentence you are pointing at, and which one is
    playing, both matter more than which one is worth practising. */
 .sentence-line.recommended {
-  background: rgba(216, 162, 74, 0.08);
-  border-left-color: #d8a24a;
+  background: var(--gold-tint-bg);
+  border-left-color: var(--gold);
 }
 
 .rec-badge {
@@ -155,20 +239,20 @@ body {
 /* The hovered line is what Alt+S / Alt+G will explain, so make the target
    unmistakable rather than a faint background change. */
 .sentence-line:hover {
-  background: #2a2b32;
-  border-left-color: #3b6fd4;
+  background: var(--bg-elevated);
+  border-left-color: var(--accent);
 }
 
 .sentence-line.active {
-  background: #2f4571;
+  background: var(--bg-tint);
 }
 
 /* Esc pins the line you are shadowing: playback is paused and the highlight
    stops following the playhead, so TTS keeps speaking this one. Declared last
    so it wins over .recommended, :hover and .active. */
 .sentence-line.pinned {
-  background: #2f4571;
-  border-left-color: #d8a24a;
+  background: var(--bg-tint);
+  border-left-color: var(--gold);
 }
 
 .sentence-line.pinned::before {
@@ -177,7 +261,7 @@ body {
 }
 
 .timestamp {
-  color: #7fa8e8;
+  color: var(--accent-text-3);
   cursor: pointer;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
@@ -224,7 +308,7 @@ body {
 .sentence-text rt {
   font-size: 0.62em;
   line-height: 1.1;
-  color: #9aa4b8;
+  color: var(--text-soft);
   font-weight: 400;
   /* Latin readings like pinyin are wider than the characters under them, so
      without this they cram against their neighbours. */
@@ -238,8 +322,9 @@ body {
 }
 
 #reading-toggle.active {
-  background: #3b6fd4;
-  border-color: #3b6fd4;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 #player-panel {
@@ -276,7 +361,7 @@ body {
 .resizer {
   flex: none;
   position: relative;
-  background: #26272e;
+  background: var(--bg-panel);
   touch-action: none;
 }
 
@@ -285,16 +370,16 @@ body {
 .resizer::after {
   content: "";
   position: absolute;
-  background: #4a4b55;
+  background: var(--border-elevated);
   border-radius: 2px;
 }
 
 .resizer:hover, .resizer:focus-visible, .resizer.dragging {
-  background: #2f3b57;
+  background: var(--bg-tint-hover);
 }
 
 .resizer:hover::after, .resizer:focus-visible::after, .resizer.dragging::after {
-  background: #3b6fd4;
+  background: var(--accent);
 }
 
 .resizer:focus { outline: none; }
@@ -302,8 +387,8 @@ body {
 #col-resizer {
   width: 7px;
   cursor: col-resize;
-  border-left: 1px solid #34353c;
-  border-right: 1px solid #34353c;
+  border-left: 1px solid var(--border-soft);
+  border-right: 1px solid var(--border-soft);
 }
 
 #col-resizer::after {
@@ -349,7 +434,7 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #ccc;
+  color: var(--text-3);
 }
 
 /* Greyed out rather than hidden when auto-pause is off: the option only means
@@ -362,11 +447,11 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
 /* Collapsed by default: the ~55px it used to occupy is the difference between
    a usable chat panel and an unusable one on a laptop screen. */
 #shortcuts-hint {
-  color: #999;
+  color: var(--text-muted);
   font-size: 0.9em;
   flex: none;
   padding-top: 8px;
-  border-top: 1px solid #34353c;
+  border-top: 1px solid var(--border-soft);
 }
 
 #shortcuts-hint > summary {
@@ -386,7 +471,7 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
   flex-direction: column;
   gap: 6px;
   padding-top: 8px;
-  border-top: 1px solid #34353c;
+  border-top: 1px solid var(--border-soft);
 }
 
 #chat-header {
@@ -398,18 +483,18 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
 
 #chat-title {
   font-weight: 600;
-  color: #9ecbff;
+  color: var(--accent-text);
 }
 
 #chat-meta {
   margin-left: auto;
-  color: #999;
+  color: var(--text-muted);
   font-size: 0.85em;
   text-align: right;
 }
 
 #chat-meta.warn {
-  color: #d8a24a;
+  color: var(--gold);
 }
 
 #chat-clear {
@@ -428,7 +513,7 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
 }
 
 #chat-empty {
-  color: #777;
+  color: var(--text-dim);
   font-size: 0.9em;
   margin: auto 0;
   text-align: center;
@@ -445,21 +530,21 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
 
 .chat-msg.user {
   align-self: flex-end;
-  background: #3b6fd4;
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .chat-msg.assistant {
   align-self: flex-start;
-  background: #2a2b32;
-  border: 1px solid #34353c;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
 }
 
 .chat-msg.error {
   align-self: flex-start;
-  background: #2a2b32;
-  border: 1px solid #e58080;
-  color: #e58080;
+  background: var(--bg-elevated);
+  border: 1px solid var(--danger);
+  color: var(--danger);
 }
 
 .chat-msg > *:first-child { margin-top: 0; }
@@ -468,18 +553,18 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
 .chat-msg p { margin: 0 0 8px; }
 .chat-msg ul, .chat-msg ol { margin: 0 0 8px; padding-left: 20px; }
 .chat-msg li { margin-bottom: 3px; }
-.chat-msg h4 { margin: 10px 0 6px; color: #9ecbff; font-size: 1em; }
+.chat-msg h4 { margin: 10px 0 6px; color: var(--accent-text); font-size: 1em; }
 
 .chat-msg code {
-  background: #1a1b20;
+  background: var(--bg-well);
   border-radius: 4px;
   padding: 1px 4px;
   font-size: 0.9em;
 }
 
 .chat-msg pre {
-  background: #1a1b20;
-  border: 1px solid #34353c;
+  background: var(--bg-well);
+  border: 1px solid var(--border-soft);
   border-radius: 6px;
   padding: 8px;
   margin: 0 0 8px;
@@ -493,7 +578,7 @@ body.resizing-x #yt-player, body.resizing-y #yt-player { pointer-events: none; }
 
 /* Clickable citation: jumps the player, same as clicking a transcript line. */
 a.ts {
-  color: #9ecbff;
+  color: var(--accent-text);
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
@@ -504,8 +589,8 @@ a.ts:hover {
 }
 
 .mermaid-box {
-  background: #1a1b20;
-  border: 1px solid #34353c;
+  background: var(--bg-well);
+  border: 1px solid var(--border-soft);
   border-radius: 6px;
   padding: 8px;
   margin: 0 0 8px;
@@ -526,16 +611,16 @@ a.ts:hover {
 
 .chat-chip {
   cursor: pointer;
-  border: 1px solid #444;
-  background: #33343c;
-  color: #eee;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
   border-radius: 12px;
   padding: 4px 10px;
   font-size: 0.85em;
 }
 
 .chat-chip:hover:not(:disabled) {
-  background: #43444e;
+  background: var(--bg-surface-hover);
 }
 
 #chat-form {
@@ -550,9 +635,9 @@ a.ts:hover {
   resize: none;
   padding: 6px 8px;
   border-radius: 6px;
-  border: 1px solid #444;
-  background: #1a1b20;
-  color: #eee;
+  border: 1px solid var(--border);
+  background: var(--bg-well);
+  color: var(--text);
   font-family: inherit;
   font-size: 0.92em;
 }
@@ -574,7 +659,7 @@ a.ts:hover {
   height: 6px;
   margin-right: 3px;
   border-radius: 50%;
-  background: #999;
+  background: var(--text-muted);
   animation: typing-bounce 1.2s infinite ease-in-out;
 }
 
@@ -598,8 +683,8 @@ a.ts:hover {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: #2a2b32;
-  border: 1px solid #444;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 20px 24px;
   /* The starting width, until a drag replaces it with an inline one. A
@@ -630,7 +715,7 @@ a.ts:hover {
 }
 
 #popup-mode {
-  color: #999;
+  color: var(--text-muted);
   font-size: 0.75em;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -641,7 +726,7 @@ a.ts:hover {
 #popup-title {
   font-size: 1.3em;
   font-weight: 700;
-  color: #9ecbff;
+  color: var(--accent-text);
   margin-bottom: 10px;
 }
 
@@ -655,7 +740,7 @@ a.ts:hover {
 }
 
 .explain-quote {
-  color: #aaa;
+  color: var(--text-4);
   font-style: italic;
   font-size: 0.9em;
   line-height: 1.5;
@@ -671,8 +756,8 @@ a.ts:hover {
 
 .explain-pos {
   display: inline-block;
-  color: #ccc;
-  background: #33343c;
+  color: var(--text-3);
+  background: var(--bg-surface);
   border-radius: 4px;
   font-size: 0.8em;
   padding: 2px 8px;
@@ -681,16 +766,16 @@ a.ts:hover {
 /* The pronunciation leads, because for a tonal language it is the part you
    have to get right before anything else about the word matters. */
 .explain-reading {
-  color: #8fc7ff;
+  color: var(--accent-text-2);
   font-size: 0.95em;
   letter-spacing: 0.02em;
 }
 
 .explain-say {
   cursor: pointer;
-  border: 1px solid #444;
-  background: #33343c;
-  color: #eee;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
   border-radius: 4px;
   font-size: 0.85em;
   line-height: 1.2;
@@ -711,20 +796,21 @@ a.ts:hover {
 }
 
 .explain-say:hover {
-  background: #43444e;
+  background: var(--bg-surface-hover);
 }
 
 /* The English translation of a target-language example. Kept visually
    subordinate: it is there to make the example readable, not to be practised. */
 .explain-gloss {
-  color: #9aa0ad;
+  color: var(--text-soft);
   font-size: 0.9em;
   margin-top: 4px;
 }
 
 #slow-toggle.active {
-  background: #3b6fd4;
-  border-color: #3b6fd4;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .explain-section {
@@ -732,7 +818,7 @@ a.ts:hover {
 }
 
 .explain-label {
-  color: #999;
+  color: var(--text-muted);
   font-size: 0.85em;
   margin-bottom: 4px;
 }
@@ -746,7 +832,7 @@ a.ts:hover {
 }
 
 .easy-english {
-  border-left: 3px solid #3b6fd4;
+  border-left: 3px solid var(--accent);
   padding-left: 12px;
 }
 
@@ -764,13 +850,13 @@ a.ts:hover {
 
 .grammar-form {
   flex-shrink: 0;
-  color: #9ecbff;
+  color: var(--accent-text);
   font-family: Consolas, Menlo, monospace;
   font-size: 0.9em;
 }
 
 .grammar-note {
-  color: #ddd;
+  color: var(--text-2);
 }
 
 /* One row per part of the passage. Same three-element shape as .grammar-point:
@@ -793,11 +879,11 @@ a.ts:hover {
   min-width: 5.5em;
   max-width: 40%;
   overflow-wrap: anywhere;
-  color: #9ecbff;
+  color: var(--accent-text);
 }
 
 .breakdown-gloss {
-  color: #ddd;
+  color: var(--text-2);
   overflow-wrap: anywhere;
 }
 
@@ -810,9 +896,9 @@ a.ts:hover {
 .anki-copy {
   margin-left: auto;
   cursor: pointer;
-  border: 1px solid #444;
-  background: #33343c;
-  color: #eee;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
   border-radius: 4px;
   font-size: 0.95em;
   line-height: 1.2;
@@ -820,7 +906,7 @@ a.ts:hover {
 }
 
 .anki-copy:hover {
-  background: #43444e;
+  background: var(--bg-surface-hover);
 }
 
 .vocab-row {
@@ -836,22 +922,22 @@ a.ts:hover {
 }
 
 .vocab-word {
-  color: #9ecbff;
+  color: var(--accent-text);
   font-weight: 700;
 }
 
 .vocab-reading {
-  color: #8fc7ff;
+  color: var(--accent-text-2);
   font-size: 0.9em;
 }
 
 .vocab-meaning {
-  color: #eee;
+  color: var(--text);
 }
 
 /* The flashcard back: present, but not competing with the headword above it. */
 .vocab-explain {
-  color: #9aa0ad;
+  color: var(--text-soft);
   font-size: 0.9em;
   line-height: 1.5;
   margin-top: 2px;
@@ -859,20 +945,20 @@ a.ts:hover {
 }
 
 .explain-loading {
-  color: #999;
+  color: var(--text-muted);
 }
 
 .explain-error {
-  color: #e58080;
+  color: var(--danger);
   line-height: 1.55;
 }
 
 #popup-hint {
-  color: #777;
+  color: var(--text-dim);
   font-size: 0.8em;
   margin-top: 16px;
   padding-top: 10px;
-  border-top: 1px solid #3a3b42;
+  border-top: 1px solid var(--border-dim);
 }
 
 .hidden {
@@ -893,9 +979,9 @@ a.ts:hover {
   max-width: min(560px, 90vw);
   padding: 10px 16px;
   border-radius: 8px;
-  background: #33343c;
-  border: 1px solid #4a4b55;
-  color: #eee;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-elevated);
+  color: var(--text);
   font-size: 0.9em;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   /* Never swallow a click, and never become part of a text selection - this

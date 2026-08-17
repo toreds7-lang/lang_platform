@@ -48,10 +48,27 @@ RECOMMEND_KEY = "recommend_v2"
 # Every explanation is keyed by sentence index, which re-segmentation shifts.
 EXPLAIN_KEYS = (DICT_KEY, SENTENCE_KEY, GRAMMAR_KEY, BREAKDOWN_KEY)
 
-# Everything keyed by sentence index, so everything re-segmentation invalidates.
-# Wider than EXPLAIN_KEYS on purpose: "clear explanations" should not throw away
-# a scoring pass that costs a call per 50 sentences to rebuild.
-INDEXED_KEYS = EXPLAIN_KEYS + (RECOMMEND_KEY,)
+# The two explanation languages a request can ask for -- see dictionary.py's
+# _explanation_rule. English keeps the bare EXPLAIN_KEYS names below so caches
+# written before this feature existed keep being read; every other language
+# gets its own suffixed key so the two can never collide.
+EXPLAIN_LANGS = ("en", "ko")
+
+
+def _explain_cache_key(base_key: str, explain_lang: str) -> str:
+    return base_key if explain_lang == "en" else f"{base_key}_{explain_lang}"
+
+
+def _delete_indexed_caches(video_id: str, lang: str) -> None:
+    """Every cache keyed by sentence index -- which re-segmentation shifts --
+    across every explanation language. Wider than EXPLAIN_KEYS on purpose:
+    "clear explanations" should not throw away a scoring pass that costs a
+    call per 50 sentences to rebuild, but re-segmentation must.
+    """
+    for key in EXPLAIN_KEYS:
+        for explain_lang_code in EXPLAIN_LANGS:
+            cache.delete_json(video_id, _explain_cache_key(key, explain_lang_code), lang)
+    cache.delete_json(video_id, RECOMMEND_KEY, lang)
 
 
 class LoadVideoRequest(BaseModel):
@@ -196,16 +213,14 @@ def regenerate(video_id: str, target: str = "modified", lang: str | None = None)
         # Bookmarks and explanations are keyed by sentence index, which
         # re-segmentation invalidates.
         cache.delete_json(video_id, MODIFIED_KEY, lang)
-        for key in INDEXED_KEYS:
-            cache.delete_json(video_id, key, lang)
+        _delete_indexed_caches(video_id, lang)
         cache.delete_json(video_id, "bookmarks", lang)
         return {"mode": "modified", "sentences": _modified_sentences(video_id, lang)}
 
     if target == "raw":
         cache.delete_json(video_id, "raw", lang)
         cache.delete_json(video_id, MODIFIED_KEY, lang)
-        for key in INDEXED_KEYS:
-            cache.delete_json(video_id, key, lang)
+        _delete_indexed_caches(video_id, lang)
         cache.delete_json(video_id, "bookmarks", lang)
         try:
             raw = transcript.fetch_raw_transcript(video_id, prof)
@@ -280,48 +295,61 @@ def _cached_explain(video_id: str, lang: str, cache_key: str, entry_key: str, pr
     return result
 
 
+def _explain_lang(explain_lang: str | None) -> str:
+    explain_lang = explain_lang or "en"
+    if explain_lang not in EXPLAIN_LANGS:
+        raise HTTPException(status_code=400, detail=f"Unsupported explanation language: {explain_lang}")
+    return explain_lang
+
+
 @app.post("/api/videos/{video_id}/explain/word")
-def explain_word(video_id: str, req: DictionaryRequest, lang: str | None = None):
+def explain_word(video_id: str, req: DictionaryRequest, lang: str | None = None, explain_lang: str | None = None):
     prof = _profile(video_id, lang)
+    explain_lang = _explain_lang(explain_lang)
     sentence, before, after = _sentence_context(video_id, req.sentence_idx, prof["code"])
     return _cached_explain(
         video_id,
         prof["code"],
-        DICT_KEY,
+        _explain_cache_key(DICT_KEY, explain_lang),
         f"{req.sentence_idx}:{req.word.lower()}",
-        lambda: dictionary_module.explain_word(req.word, sentence, before, after, prof),
+        lambda: dictionary_module.explain_word(req.word, sentence, before, after, prof, explain_lang),
     )
 
 
 @app.post("/api/videos/{video_id}/explain/sentence")
-def explain_sentence(video_id: str, req: SentenceRequest, lang: str | None = None):
+def explain_sentence(video_id: str, req: SentenceRequest, lang: str | None = None, explain_lang: str | None = None):
     prof = _profile(video_id, lang)
+    explain_lang = _explain_lang(explain_lang)
     sentence, before, after = _sentence_context(video_id, req.sentence_idx, prof["code"])
     return _cached_explain(
         video_id,
         prof["code"],
-        SENTENCE_KEY,
+        _explain_cache_key(SENTENCE_KEY, explain_lang),
         str(req.sentence_idx),
-        lambda: dictionary_module.explain_sentence(sentence, before, after, prof),
+        lambda: dictionary_module.explain_sentence(sentence, before, after, prof, explain_lang),
     )
 
 
 @app.post("/api/videos/{video_id}/explain/grammar")
-def explain_grammar(video_id: str, req: SentenceRequest, lang: str | None = None):
+def explain_grammar(video_id: str, req: SentenceRequest, lang: str | None = None, explain_lang: str | None = None):
     prof = _profile(video_id, lang)
+    explain_lang = _explain_lang(explain_lang)
     sentence, before, after = _sentence_context(video_id, req.sentence_idx, prof["code"])
     return _cached_explain(
         video_id,
         prof["code"],
-        GRAMMAR_KEY,
+        _explain_cache_key(GRAMMAR_KEY, explain_lang),
         str(req.sentence_idx),
-        lambda: dictionary_module.explain_grammar(sentence, before, after, prof),
+        lambda: dictionary_module.explain_grammar(sentence, before, after, prof, explain_lang),
     )
 
 
 @app.post("/api/videos/{video_id}/explain/breakdown")
-def explain_breakdown(video_id: str, req: BreakdownRequest, lang: str | None = None):
+def explain_breakdown(
+    video_id: str, req: BreakdownRequest, lang: str | None = None, explain_lang: str | None = None
+):
     prof = _profile(video_id, lang)
+    explain_lang = _explain_lang(explain_lang)
     sentence, before, after = _sentence_context(video_id, req.sentence_idx, prof["code"])
 
     text = " ".join((req.text or "").split()) or sentence
@@ -341,9 +369,9 @@ def explain_breakdown(video_id: str, req: BreakdownRequest, lang: str | None = N
     return _cached_explain(
         video_id,
         prof["code"],
-        BREAKDOWN_KEY,
+        _explain_cache_key(BREAKDOWN_KEY, explain_lang),
         f"{req.sentence_idx}:{digest}",
-        lambda: dictionary_module.break_down(text, sentence, before, after, prof),
+        lambda: dictionary_module.break_down(text, sentence, before, after, prof, explain_lang),
     )
 
 
@@ -352,12 +380,13 @@ def flush_explanations(video_id: str, lang: str | None = None):
     prof = _profile(video_id, lang)
     with cache.lock:
         for key in EXPLAIN_KEYS:
-            cache.delete_json(video_id, key, prof["code"])
+            for explain_lang_code in EXPLAIN_LANGS:
+                cache.delete_json(video_id, _explain_cache_key(key, explain_lang_code), prof["code"])
     return {"status": "ok"}
 
 
 @app.post("/api/videos/{video_id}/chat")
-def chat(video_id: str, req: ChatRequest, lang: str | None = None):
+def chat(video_id: str, req: ChatRequest, lang: str | None = None, explain_lang: str | None = None):
     """Answer a question about the whole video.
 
     Deliberately uncached and stateless: the conversation lives in the browser,
@@ -366,9 +395,10 @@ def chat(video_id: str, req: ChatRequest, lang: str | None = None):
     already holds it and re-uploading 185KB per message would be pure waste.
     """
     prof = _profile(video_id, lang)
+    explain_lang = _explain_lang(explain_lang)
     sentences = _modified_sentences(video_id, prof["code"])
     try:
-        return chat_module.answer(sentences, [m.model_dump() for m in req.messages], prof)
+        return chat_module.answer(sentences, [m.model_dump() for m in req.messages], prof, explain_lang)
     except chat_module.ChatError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
