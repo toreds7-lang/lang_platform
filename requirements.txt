@@ -4,3 +4,7 @@ youtube-transcript-api==1.2.4
 openai==1.59.6
 python-dotenv==1.0.1
 httpx==0.28.1
+# Keep this current. edge-tts signs its requests with a token that embeds an
+# Edge version number, and the service returns 403 once that number is too old:
+# 7.0.2 could still LIST all 322 voices but could not synthesize a single one.
+edge-tts==7.2.8

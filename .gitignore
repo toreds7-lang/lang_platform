@@ -11,6 +11,9 @@ cache/
 __pycache__/
 *.py[cod]
 
+# Claude Code: share skills, keep machine-local settings out
+.claude/settings.local.json
+
 # Editor / OS
 .vscode/
 .idea/

@@ -1,5 +1,20 @@
 const state = {
   videoId: null,
+  // The language being practised. Chosen before a video is loaded, and part of
+  // that video's cache key from then on, so every later request carries it.
+  // Picking a video out of the history sets this from the video's own metadata
+  // rather than the other way round -- which is what stops a cached video ever
+  // being reopened under the wrong language.
+  lang: "en",
+  // code -> {name, native, voices, has_reading}, from GET /api/languages.
+  langs: {},
+  // video_id -> meta, so the history dropdown can restore a video's language.
+  history: {},
+  voice: null,
+  // Slow speech is produced by the voice, not by slowing playback down, so
+  // tones and pitch accent survive it. Applies to every clip the app plays.
+  slowSpeech: false,
+  showReading: true,
   raw: [],
   modified: [],
   chunkToSentence: [],
@@ -27,7 +42,6 @@ const state = {
   stayOnSentence: true,
   autoPauseTargetEnd: null,
   autoPauseArmedIdx: null,
-  accent: "en-GB",
   ytPlayer: null,
   ytReady: false,
   pendingVideoId: null,
@@ -37,7 +51,7 @@ const state = {
   hoveredSentenceIdx: null,
   // Which explanation the popup is showing, plus a sequence number so a slow
   // response for an earlier request can't overwrite a newer one.
-  explain: { open: false, mode: null, sentenceIdx: null, word: null, seq: 0 },
+  explain: { open: false, mode: null, sentenceIdx: null, word: null, text: null, seq: 0 },
   // mode+idx(+word) -> result, so re-opening a view is instant.
   explainCache: new Map(),
   // Whole-video Q&A. The conversation lives here and nowhere else: the server
@@ -49,7 +63,9 @@ const state = {
 const el = {
   input: document.getElementById("video-input"),
   loadBtn: document.getElementById("load-btn"),
+  langSelect: document.getElementById("lang-select"),
   historySelect: document.getElementById("history-select"),
+  readingToggle: document.getElementById("reading-toggle"),
   videoTitle: document.getElementById("video-title"),
   status: document.getElementById("transcript-status"),
   list: document.getElementById("transcript-list"),
@@ -60,8 +76,9 @@ const el = {
   regenModifiedBtn: document.getElementById("regen-modified-btn"),
   regenRawBtn: document.getElementById("regen-raw-btn"),
   flushDictBtn: document.getElementById("flush-dict-btn"),
-  accentToggle: document.getElementById("accent-toggle"),
+  voiceToggle: document.getElementById("voice-toggle"),
   ttsBtn: document.getElementById("tts-play-btn"),
+  slowToggle: document.getElementById("slow-toggle"),
   autopauseToggle: document.getElementById("autopause-toggle"),
   stayToggle: document.getElementById("stay-toggle"),
   stayLabel: document.getElementById("stay-label"),
@@ -78,7 +95,29 @@ const el = {
   chatForm: document.getElementById("chat-form"),
   chatInput: document.getElementById("chat-input"),
   chatSend: document.getElementById("chat-send"),
+  toast: document.getElementById("toast"),
 };
+
+// A brief message that doesn't disturb anything. #transcript-status is the
+// transcript panel's own line and already carries loading, error and empty-
+// bookmark states, so borrowing it for passing feedback would fight those.
+let toastHandle = null;
+
+function toast(message) {
+  el.toast.textContent = message;
+  el.toast.classList.remove("hidden");
+  clearTimeout(toastHandle);
+  toastHandle = setTimeout(() => el.toast.classList.add("hidden"), 2200);
+}
+
+// Every per-video endpoint is keyed by (language, video id), so the language
+// rides along on all of them. The server can fall back to scanning the cache
+// when it is missing, but that is a safety net for a hand-typed URL -- the app
+// itself always knows which language it loaded a video under.
+function videoUrl(path, params = {}) {
+  const qs = new URLSearchParams({ lang: state.lang, ...params });
+  return `/api/videos/${state.videoId}${path}?${qs}`;
+}
 
 function fmtTime(t) {
   const m = Math.floor(t / 60);
@@ -105,18 +144,88 @@ function unescapeHtml(str) {
     .replace(/&amp;/g, "&");
 }
 
-function renderWordsHtml(text) {
+// Punctuation to shave off the edges of a token so the lookup key is the bare
+// word. \p{L}\p{N} rather than \w on purpose: JavaScript's \w is ASCII-only, so
+// it would treat every accented and every CJK character as punctuation --
+// "đẹp" strips down to "p", and a Chinese word strips to nothing at all.
+const EDGE_PUNCT = /^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu;
+
+// One clickable span per whitespace token, with surrounding punctuation left
+// outside it. This is the path every space-separated language takes.
+function renderSpacedWordsHtml(text) {
   return text
     .split(/(\s+)/)
     .map((token) => {
       if (/^\s+$/.test(token) || token === "") return token;
-      const clean = token.replace(/^[^\w']+|[^\w']+$/g, "");
+      const clean = token.replace(EDGE_PUNCT, "");
       if (!clean) return escapeHtml(token);
       const lead = token.slice(0, token.indexOf(clean));
       const trail = token.slice(token.indexOf(clean) + clean.length);
       return `${escapeHtml(lead)}<span class="word" data-word="${escapeHtml(clean)}">${escapeHtml(clean)}</span>${escapeHtml(trail)}`;
     })
     .join("");
+}
+
+// Languages whose words can't be found by splitting on spaces get an explicit
+// word list from the server, optionally carrying a reading. <ruby> is used
+// rather than hand-positioned markup because the browser already places the
+// reading correctly, including across a line wrap -- and hiding it is then a
+// single CSS rule instead of a re-render.
+// A reading that just repeats the word teaches nothing and doubles the line
+// height. The server drops these now, but transcripts segmented before it did
+// still carry them, so they are ignored here too rather than regenerated.
+function usefulReading(word, reading) {
+  if (!reading) return false;
+  const bare = (s) => s.replace(/[^\p{L}\p{N}]/gu, "");
+  return bare(reading) !== bare(word);
+}
+
+function renderGroupedWordsHtml(words) {
+  return words
+    .map(({ w, r }) => {
+      const attr = escapeHtml(w.replace(EDGE_PUNCT, "") || w);
+      const inner = usefulReading(w, r)
+        ? `<ruby>${escapeHtml(w)}<rt>${escapeHtml(r)}</rt></ruby>`
+        : escapeHtml(w);
+      return `<span class="word" data-word="${attr}">${inner}</span>`;
+    })
+    .join("");
+}
+
+// The selected text, with ruby readings taken back out.
+//
+// getSelection().toString() serializes every node in the range, and <rt> is an
+// ordinary node -- so selecting 今日はいい天気 yields 今日きょうはいい天気てんき,
+// the same doubling you get copying furigana'd text off a web page. Speaking
+// that verbatim would read every reading twice. Cloning the range and deleting
+// the <rt>/<rp> elements first is the only way to get the base text back.
+function selectionText() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < sel.rangeCount; i++) {
+    frag.appendChild(sel.getRangeAt(i).cloneContents());
+  }
+  const raw = frag.textContent;
+  frag.querySelectorAll("rt, rp").forEach((node) => node.remove());
+  const clean = frag.textContent.replace(/\s+/g, " ").trim();
+
+  // Selecting ONLY the furigana strips down to nothing; in that case the
+  // reading itself is what you asked to hear.
+  return clean || raw.replace(/\s+/g, " ").trim();
+}
+
+function renderWordsHtml(sentence, text) {
+  const words = sentence && sentence.words;
+  if (words && words.length) return renderGroupedWordsHtml(words);
+  // Raw caption view, or a segmentation that came back without a word list.
+  // Splitting an unspaced script on whitespace would make the whole line one
+  // unclickable token, so it falls back to one span per character instead.
+  if (state.langs[state.lang] && state.langs[state.lang].spaced === false) {
+    return renderGroupedWordsHtml([...text].filter((c) => !/\s/.test(c)).map((w) => ({ w })));
+  }
+  return renderSpacedWordsHtml(text);
 }
 
 // ---- YouTube IFrame API ----
@@ -256,21 +365,103 @@ function setPinned(on) {
   }
 }
 
-// ---- Loading videos ----
-async function refreshHistory() {
-  const videos = await fetch("/api/videos").then((r) => r.json());
-  el.historySelect.innerHTML = '<option value="">-- Recent videos --</option>';
-  for (const v of videos) {
-    const opt = document.createElement("option");
-    opt.value = v.video_id;
-    opt.textContent = v.title;
-    if (v.video_id === state.videoId) opt.selected = true;
-    el.historySelect.appendChild(opt);
+// ---- Languages ----
+function renderVoiceToggle() {
+  const prof = state.langs[state.lang];
+  el.voiceToggle.innerHTML = "";
+  if (!prof) return;
+  const names = Object.keys(prof.voices || {});
+  state.voice = prof.voices[names[0]] || null;
+  for (const [label, voice] of Object.entries(prof.voices || {})) {
+    const btn = document.createElement("button");
+    btn.className = "voice-btn" + (voice === state.voice ? " active" : "");
+    btn.dataset.voice = voice;
+    btn.textContent = label;
+    el.voiceToggle.appendChild(btn);
   }
 }
 
-async function loadVideo(urlOrId) {
+// The reading is only offered for languages that have one, and hiding it is a
+// class on the list rather than a re-render, so the toggle is instant.
+function syncReadingToggle() {
+  const prof = state.langs[state.lang];
+  const has = !!(prof && prof.has_reading);
+  el.readingToggle.classList.toggle("hidden", !has);
+  el.readingToggle.classList.toggle("active", has && state.showReading);
+  el.list.classList.toggle("no-reading", !state.showReading);
+}
+
+function setLanguage(code) {
+  if (!code || !state.langs[code] || code === state.lang) {
+    syncReadingToggle();
+    return;
+  }
+  state.lang = code;
+  el.langSelect.value = code;
+  renderVoiceToggle();
+  syncReadingToggle();
+}
+
+async function initLanguages() {
+  const resp = await fetch("/api/languages").then((r) => r.json());
+  state.langs = Object.fromEntries(resp.languages.map((p) => [p.code, p]));
+  el.langSelect.innerHTML = "";
+  for (const prof of resp.languages) {
+    const opt = document.createElement("option");
+    opt.value = prof.code;
+    opt.textContent = prof.native;
+    el.langSelect.appendChild(opt);
+  }
+  state.lang = state.langs[resp.default] ? resp.default : resp.languages[0].code;
+  el.langSelect.value = state.lang;
+  renderVoiceToggle();
+  syncReadingToggle();
+}
+
+el.langSelect.addEventListener("change", () => setLanguage(el.langSelect.value));
+
+el.readingToggle.addEventListener("click", () => {
+  state.showReading = !state.showReading;
+  syncReadingToggle();
+});
+
+// ---- Loading videos ----
+// Grouped by language rather than filtered to the current one. Filtering would
+// hide every video saved under another language until you happened to select
+// it, and the list emptying on a language switch reads like data loss.
+async function refreshHistory() {
+  const videos = await fetch("/api/videos").then((r) => r.json());
+  state.history = {};
+  el.historySelect.innerHTML = '<option value="">-- Recent videos --</option>';
+
+  const byLang = new Map();
+  for (const v of videos) {
+    state.history[v.video_id] = v;
+    if (!byLang.has(v.lang)) byLang.set(v.lang, []);
+    byLang.get(v.lang).push(v);
+  }
+
+  // Registered order first, so the groups don't reshuffle as videos are added.
+  const order = Object.keys(state.langs).filter((c) => byLang.has(c));
+  for (const code of byLang.keys()) if (!order.includes(code)) order.push(code);
+
+  for (const code of order) {
+    const group = document.createElement("optgroup");
+    group.label = (state.langs[code] && state.langs[code].native) || code;
+    for (const v of byLang.get(code)) {
+      const opt = document.createElement("option");
+      opt.value = v.video_id;
+      opt.textContent = v.title;
+      if (v.video_id === state.videoId) opt.selected = true;
+      group.appendChild(opt);
+    }
+    el.historySelect.appendChild(group);
+  }
+}
+
+async function loadVideo(urlOrId, lang = state.lang) {
   if (!urlOrId) return;
+  setLanguage(lang);
   el.status.textContent = "Loading transcript...";
   el.status.classList.remove("hidden");
   el.list.innerHTML = "";
@@ -280,7 +471,7 @@ async function loadVideo(urlOrId) {
     loadResp = await fetch("/api/videos/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url_or_id: urlOrId }),
+      body: JSON.stringify({ url_or_id: urlOrId, lang: state.lang }),
     }).then(async (r) => {
       if (!r.ok) throw new Error((await r.json()).detail || "Failed to load video");
       return r.json();
@@ -291,6 +482,7 @@ async function loadVideo(urlOrId) {
   }
 
   state.videoId = loadResp.meta.video_id;
+  if (loadResp.meta.lang) setLanguage(loadResp.meta.lang);
   state.raw = loadResp.raw;
   state.bookmarks = new Set();
   state.currentSentenceIdx = null;
@@ -302,16 +494,16 @@ async function loadVideo(urlOrId) {
   refreshHistory();
 
   el.status.textContent = "Segmenting into sentences (LLM)...";
-  const modResp = await fetch(`/api/videos/${state.videoId}/transcript?mode=modified`).then((r) => r.json());
+  const modResp = await fetch(videoUrl("/transcript", { mode: "modified" })).then((r) => r.json());
   state.modified = modResp.sentences;
   buildChunkMap();
 
-  const bookmarksResp = await fetch(`/api/videos/${state.videoId}/bookmarks`).then((r) => r.json());
+  const bookmarksResp = await fetch(videoUrl("/bookmarks")).then((r) => r.json());
   state.bookmarks = new Set(bookmarksResp);
 
   // Read-only: badges come back for free if this video was scored before, and
   // nothing is generated behind your back if it wasn't.
-  const recResp = await fetch(`/api/videos/${state.videoId}/recommendations`).then((r) => r.json());
+  const recResp = await fetch(videoUrl("/recommendations")).then((r) => r.json());
   state.recommendScores = recResp.scores;
   computeRecommended();
 
@@ -319,14 +511,17 @@ async function loadVideo(urlOrId) {
   render();
 }
 
-// Words per second, from timings the segmenter already stores. Fast lines are
-// the harder shadowing targets.
+// Units per second, from timings the segmenter already stores. Fast lines are
+// the harder shadowing targets. A unit is a word or a character depending on
+// the language, which is fine: this only ever ranks sentences against others
+// from the same video, never across languages.
 function speechRate(sentenceIdx) {
   const sentence = state.modified[sentenceIdx];
   if (!sentence) return 0;
   const span = sentence.end - sentence.start;
-  if (span <= 0) return 0;
-  return (sentence.word_range[1] - sentence.word_range[0] + 1) / span;
+  const range = sentence.unit_range;
+  if (span <= 0 || !range) return 0;
+  return (range[1] - range[0] + 1) / span;
 }
 
 // Take the top ratio-share of sentences by score. Sentences the server ruled
@@ -391,7 +586,9 @@ function render() {
         ? state.modified.filter((s) => state.bookmarks.has(s.index))
         : state.modified;
     for (const sentence of sentences) {
-      el.list.appendChild(buildLine(sentence.index, sentence.start, sentence.text, sentence.index));
+      el.list.appendChild(
+        buildLine(sentence.index, sentence.start, sentence.text, sentence.index, sentence)
+      );
     }
     if (state.mode === "bookmarks" && sentences.length === 0) {
       el.status.textContent = "No bookmarks yet. Star a sentence while shadowing to save it here.";
@@ -405,7 +602,7 @@ function render() {
   }
 }
 
-function buildLine(lineIdx, start, text, ownerSentenceIdx) {
+function buildLine(lineIdx, start, text, ownerSentenceIdx, sentence = null) {
   const li = document.createElement("li");
   li.className = "sentence-line";
   li.dataset.sentenceIdx = ownerSentenceIdx;
@@ -429,7 +626,7 @@ function buildLine(lineIdx, start, text, ownerSentenceIdx) {
 
   const textSpan = document.createElement("span");
   textSpan.className = "sentence-text";
-  textSpan.innerHTML = renderWordsHtml(text);
+  textSpan.innerHTML = renderWordsHtml(sentence, text);
 
   li.appendChild(star);
   li.appendChild(ts);
@@ -530,6 +727,28 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  // T speaks whatever is selected, anywhere: a phrase inside a longer line, a
+  // fragment of a chat answer, or - the main case - the example sentence in the
+  // open popup. That last one is why this sits above the popup guard below.
+  // Ctrl+T never reaches here, so opening a browser tab still works.
+  if (key === "t" && !e.altKey) {
+    speakSelection(e.shiftKey);
+    return;
+  }
+
+  // O breaks a passage down part by part. Like T it reads the selection, so it
+  // sits above the popup guard too: selecting a phrase inside an open breakdown
+  // and pressing O again drills into that phrase.
+  //
+  // selectionText() is read HERE rather than inside openExplain, because
+  // showExplainShell empties the popup body -- a selection made inside the
+  // popup would be gone by the time the request was built.
+  if (key === "o") {
+    if (e.altKey) e.preventDefault(); // stop Alt+letter reaching the browser menu bar
+    openExplain("breakdown", { text: selectionText() });
+    return;
+  }
+
   // Bare A/S/D only. Without this guard Alt+S would also scrub the video.
   if (e.altKey) return;
   if (state.explain.open) return;
@@ -543,10 +762,10 @@ document.addEventListener("keydown", (e) => {
 async function toggleBookmark(sentenceIdx, starEl) {
   const starred = state.bookmarks.has(sentenceIdx);
   if (starred) {
-    await fetch(`/api/videos/${state.videoId}/bookmarks/${sentenceIdx}`, { method: "DELETE" });
+    await fetch(videoUrl(`/bookmarks/${sentenceIdx}`), { method: "DELETE" });
     state.bookmarks.delete(sentenceIdx);
   } else {
-    await fetch(`/api/videos/${state.videoId}/bookmarks`, {
+    await fetch(videoUrl("/bookmarks"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sentence_idx: sentenceIdx }),
@@ -562,6 +781,7 @@ const EXPLAIN_MODES = {
   word: { label: "Word", path: "word" },
   sentence: { label: "Sentence", path: "sentence" },
   grammar: { label: "Grammar", path: "grammar" },
+  breakdown: { label: "Breakdown", path: "breakdown" },
 };
 
 el.list.addEventListener("dblclick", (e) => {
@@ -592,26 +812,35 @@ function explainTargetIdx() {
   return state.currentSentenceIdx;
 }
 
-function explainKey(mode, sentenceIdx, word) {
-  return mode === "word" ? `word:${sentenceIdx}:${word.toLowerCase()}` : `${mode}:${sentenceIdx}`;
+function explainKey(mode, sentenceIdx, word, text) {
+  if (mode === "word") return `word:${sentenceIdx}:${word.toLowerCase()}`;
+  // A breakdown has no index of its own when it came from a selection, so the
+  // selected text is what separates one from another inside the same line.
+  if (mode === "breakdown") return `breakdown:${sentenceIdx}:${text}`;
+  return `${mode}:${sentenceIdx}`;
 }
 
-async function openExplain(mode, { word = null, sentenceIdx = null } = {}) {
+async function openExplain(mode, { word = null, sentenceIdx = null, text = null } = {}) {
   if (!state.videoId) return;
   const idx = sentenceIdx === null ? explainTargetIdx() : sentenceIdx;
   if (idx === null || idx === undefined) {
     // Nothing to aim at - tell the reader how to pick a sentence.
     showExplainShell(mode, "", null);
-    renderExplainError("Point the mouse at a sentence, or play one, then press Alt+S or Alt+G.");
+    renderExplainError("Point the mouse at a sentence, or play one, then press E, G or O.");
     return;
   }
 
   const sentence = state.modified[idx] ? state.modified[idx].text : "";
-  state.explain = { open: false, mode, sentenceIdx: idx, word, seq: state.explain.seq + 1 };
+  // Selecting nothing means "break down the whole line", so the sentence stands
+  // in for the selection from here on - including in the cache key, which is
+  // what makes the no-selection breakdown a single shared entry.
+  if (mode === "breakdown") text = text || sentence;
+  state.explain = { open: false, mode, sentenceIdx: idx, word, text, seq: state.explain.seq + 1 };
   const seq = state.explain.seq;
-  showExplainShell(mode, mode === "word" ? word : sentence, mode === "word" ? sentence : null);
+  const title = mode === "word" ? word : mode === "breakdown" ? text : sentence;
+  showExplainShell(mode, title, mode === "word" ? sentence : null);
 
-  const key = explainKey(mode, idx, word || "");
+  const key = explainKey(mode, idx, word || "", text || "");
   const cached = state.explainCache.get(key);
   if (cached) {
     renderExplain(mode, cached);
@@ -620,9 +849,14 @@ async function openExplain(mode, { word = null, sentenceIdx = null } = {}) {
 
   el.popupBody.innerHTML = '<div class="explain-loading">Loading…</div>';
 
-  const body = mode === "word" ? { word, sentence_idx: idx } : { sentence_idx: idx };
+  const body =
+    mode === "word"
+      ? { word, sentence_idx: idx }
+      : mode === "breakdown"
+      ? { sentence_idx: idx, text }
+      : { sentence_idx: idx };
   try {
-    const resp = await fetch(`/api/videos/${state.videoId}/explain/${EXPLAIN_MODES[mode].path}`, {
+    const resp = await fetch(videoUrl(`/explain/${EXPLAIN_MODES[mode].path}`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -684,24 +918,56 @@ function renderExplain(mode, result) {
   el.popupBody.innerHTML = "";
 
   if (mode === "word") {
+    const head = document.createElement("div");
+    head.className = "explain-wordhead";
+    if (result.reading) {
+      const reading = document.createElement("span");
+      reading.className = "explain-reading";
+      reading.textContent = result.reading;
+      head.appendChild(reading);
+    }
     if (result.part_of_speech) {
-      const pos = document.createElement("div");
+      const pos = document.createElement("span");
       pos.className = "explain-pos";
       pos.textContent = result.part_of_speech;
-      el.popupBody.appendChild(pos);
+      head.appendChild(pos);
     }
+    // A word on its own is the one thing the video's audio can never give you,
+    // and for a tonal language it is exactly what you need to hear.
+    head.appendChild(sayButton(result.word, "Hear this word on its own"));
+    el.popupBody.appendChild(head);
+
     el.popupBody.appendChild(explainSection("Meaning here", result.definition));
+
     const example = explainSection("Example", result.example);
     example.querySelector(".explain-value").classList.add("is-example");
+    example
+      .querySelector(".explain-label")
+      .appendChild(sayButton(result.example, "Hear this example sentence"));
+    // Non-English languages return the gloss as its own field, so the spoken
+    // half stays pure. Shown under the sentence rather than inside it.
+    if (result.example_english) {
+      const gloss = document.createElement("div");
+      gloss.className = "explain-gloss";
+      gloss.textContent = result.example_english;
+      example.appendChild(gloss);
+    }
     el.popupBody.appendChild(example);
     return;
   }
 
   if (mode === "sentence") {
-    const easy = explainSection("Easy English", result.easy_english);
+    // Labelled for both jobs it does: a simpler rewrite when the transcript is
+    // English, a plain translation when it is not.
+    const easy = explainSection("In simple English", result.easy_english);
     easy.classList.add("easy-english");
     el.popupBody.appendChild(easy);
     el.popupBody.appendChild(explainSection("What it means", result.meaning));
+    return;
+  }
+
+  if (mode === "breakdown") {
+    renderBreakdown(result);
     return;
   }
 
@@ -724,11 +990,159 @@ function renderExplain(mode, result) {
       note.className = "grammar-note";
       note.textContent = point.note;
       row.appendChild(form);
+      // The fragment is quoted from the sentence, so it is in the language
+      // being learned even though the note beside it is in English.
+      if (point.form) row.appendChild(sayButton(point.form, "Hear this form"));
       row.appendChild(note);
       section.appendChild(row);
     }
     el.popupBody.appendChild(section);
   }
+}
+
+// ---- Breakdown ----
+// Three stacked views of one analysis: what the passage says, how each part of
+// it produced that meaning, and which words are worth keeping. The last of
+// those is the only part meant to leave the app, which is what the Anki button
+// is for.
+function renderBreakdown(result) {
+  // The whole passage, spoken as one clip, before it is taken apart.
+  const head = document.createElement("div");
+  head.className = "explain-wordhead";
+  head.appendChild(sayButton(result.text, "Hear the whole passage"));
+  el.popupBody.appendChild(head);
+
+  // Labelled the way "In simple English" is: the server sends a translation for
+  // a foreign transcript and a simpler rewrite for an English one, and both are
+  // honestly described as English you can read.
+  const english = explainSection("In English", result.translation);
+  english.classList.add("easy-english");
+  el.popupBody.appendChild(english);
+
+  if (result.parts && result.parts.length) {
+    const section = document.createElement("div");
+    section.className = "explain-section";
+    const heading = document.createElement("div");
+    heading.className = "explain-label";
+    heading.textContent = "Part by part";
+    section.appendChild(heading);
+    for (const part of result.parts) {
+      const row = document.createElement("div");
+      row.className = "breakdown-row";
+      const form = document.createElement("span");
+      form.className = "breakdown-part";
+      form.textContent = part.part;
+      row.appendChild(form);
+      // The part is quoted from the passage, so it is in the language being
+      // learned; the gloss beside it is English and gets no button.
+      row.appendChild(sayButton(part.part, "Hear this part"));
+      const gloss = document.createElement("span");
+      gloss.className = "breakdown-gloss";
+      gloss.textContent = part.gloss;
+      row.appendChild(gloss);
+      section.appendChild(row);
+    }
+    el.popupBody.appendChild(section);
+  }
+
+  if (!result.vocab || !result.vocab.length) return;
+
+  const section = document.createElement("div");
+  section.className = "explain-section";
+  const heading = document.createElement("div");
+  heading.className = "explain-label vocab-heading";
+  heading.textContent = "Vocabulary (dictionary form)";
+
+  const copy = document.createElement("button");
+  copy.className = "anki-copy";
+  copy.textContent = "📋 Copy for Anki";
+  copy.title = "Copy every word as word;meaning;explanation, one card per line";
+  copy.addEventListener("click", () => copyForAnki(result.vocab));
+  heading.appendChild(copy);
+  section.appendChild(heading);
+
+  for (const entry of result.vocab) {
+    const row = document.createElement("div");
+    row.className = "vocab-row";
+
+    const line = document.createElement("div");
+    line.className = "vocab-line";
+    // The dictionary form on its own is the thing the video audio never says -
+    // it only ever speaks the inflected form - so it gets the button.
+    line.appendChild(sayButton(entry.word, "Hear this word on its own"));
+    const word = document.createElement("span");
+    word.className = "vocab-word";
+    word.textContent = entry.word;
+    line.appendChild(word);
+    if (entry.reading) {
+      const reading = document.createElement("span");
+      reading.className = "vocab-reading";
+      reading.textContent = entry.reading;
+      line.appendChild(reading);
+    }
+    if (entry.part_of_speech) {
+      const pos = document.createElement("span");
+      pos.className = "explain-pos";
+      pos.textContent = entry.part_of_speech;
+      line.appendChild(pos);
+    }
+    const meaning = document.createElement("span");
+    meaning.className = "vocab-meaning";
+    meaning.textContent = entry.meaning;
+    line.appendChild(meaning);
+    row.appendChild(line);
+
+    if (entry.explanation) {
+      const explain = document.createElement("div");
+      explain.className = "vocab-explain";
+      explain.textContent = entry.explanation;
+      row.appendChild(explain);
+    }
+    section.appendChild(row);
+  }
+  el.popupBody.appendChild(section);
+}
+
+// One card per line, three semicolon-separated fields, which is what Anki's
+// text importer reads with the separator set to ";".
+function ankiLines(vocab) {
+  // A ';' inside a field would silently shift every later field one column to
+  // the left, and a newline would split one card into two - so neither can be
+  // allowed to survive into the text at all.
+  const field = (s) => (s || "").replace(/;/g, ",").replace(/\s+/g, " ").trim();
+  return vocab.map((v) => [field(v.word), field(v.meaning), field(v.explanation)].join(";"));
+}
+
+async function copyForAnki(vocab) {
+  const text = ankiLines(vocab).join("\n");
+  try {
+    // 127.0.0.1 counts as a secure origin, so the async clipboard is available
+    // here even over plain http.
+    await navigator.clipboard.writeText(text);
+  } catch (err) {
+    // Some browsers still refuse it without a permission the app cannot ask
+    // for. The old textarea trick has no such requirement.
+    const scratch = document.createElement("textarea");
+    scratch.value = text;
+    scratch.setAttribute("readonly", "");
+    scratch.style.position = "fixed";
+    scratch.style.opacity = "0";
+    document.body.appendChild(scratch);
+    scratch.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (_) {
+      /* execCommand is gone in this browser */
+    }
+    scratch.remove();
+    if (!ok) {
+      toast(`Could not copy: ${err.message}`);
+      return;
+    }
+  }
+  const n = vocab.length;
+  toast(`Copied ${n} word${n === 1 ? "" : "s"} for Anki. Import with ";" as the separator.`);
 }
 
 function renderExplainError(message) {
@@ -751,34 +1165,152 @@ el.popupOverlay.addEventListener("click", closePopup);
 
 // ---- TTS ----
 // getVoices() is empty until Chrome has loaded them, so the first press would
-// otherwise silently ignore the accent choice. Cache and refresh on the event.
+// otherwise silently ignore the voice choice. Cache and refresh on the event.
 let ttsVoices = window.speechSynthesis.getVoices();
 window.speechSynthesis.addEventListener("voiceschanged", () => {
   ttsVoices = window.speechSynthesis.getVoices();
 });
 
+// Voices are named the way the speech service names them --
+// "en-GB-SoniaNeural" -- so the locale is the first two segments.
+function voiceLocale(voice) {
+  const parts = (voice || "").split("-");
+  return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : "en-US";
+}
+
+// The locale a language should be spoken in, taken from its own first voice so
+// there is no second place listing locales that could drift out of step.
+function localeForLang(lang) {
+  const prof = state.langs[lang];
+  const first = prof && Object.values(prof.voices || {})[0];
+  return first ? voiceLocale(first) : "en-US";
+}
+
+// Audio comes from the server, which can speak every language the app offers.
+// The browser's own voices are kept only as a fallback for when that request
+// fails, because what they cover depends entirely on the user's machine --
+// here, Korean and US English and nothing else.
+let ttsAudio = null;
+
+function stopAudio() {
+  if (ttsAudio) {
+    ttsAudio.pause();
+    URL.revokeObjectURL(ttsAudio.src);
+    ttsAudio = null;
+  }
+  window.speechSynthesis.cancel();
+}
+
+// `voice` defaults to the current language's voice, but has to be overridable:
+// speaking a selection in English while learning Japanese posts to ?lang=en,
+// and the server rightly refuses a Japanese voice there. Passing null lets it
+// fall back to the English profile's own default.
+async function playFromServer(url, body, voice = state.voice) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, voice, slow: state.slowSpeech }),
+  });
+  if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).detail || "TTS failed");
+  const blob = await resp.blob();
+  stopAudio();
+  ttsAudio = new Audio(URL.createObjectURL(blob));
+  await ttsAudio.play();
+}
+
 // Same target rule as E / G: the line under the mouse wins, then the popup's
 // line, then the playing (or pinned) line.
-function speakTargetSentence() {
+async function speakTargetSentence() {
   const idx = explainTargetIdx() ?? 0;
   const sentence = state.modified[idx];
   if (!sentence) return;
-  const utterance = new SpeechSynthesisUtterance(sentence.text);
-  utterance.lang = state.accent;
-  const match = ttsVoices.find((v) => v.lang === state.accent) || ttsVoices.find((v) => v.lang.startsWith(state.accent.slice(0, 2)));
+  try {
+    await playFromServer(videoUrl("/tts"), { sentence_idx: idx });
+  } catch (err) {
+    console.warn("Server TTS failed, falling back to the browser:", err.message);
+    speakText(sentence.text);
+  }
+}
+
+// Any short piece of target-language text: a word, an example sentence, a
+// grammar fragment. Cached server-side by its own text, so the same word looked
+// up in a different video costs nothing the second time.
+async function speakWord(text, { lang = state.lang, voice = state.voice } = {}) {
+  if (!text) return;
+  try {
+    await playFromServer(`/api/tts/word?lang=${encodeURIComponent(lang)}`, { text }, voice);
+  } catch (err) {
+    // The browser fallback only covers languages the machine has voices for, so
+    // say something rather than letting a silent no-op look like a dead key.
+    console.warn("Server TTS failed, falling back to the browser:", err.message);
+    toast(`Could not speak that: ${err.message}`);
+    // Fall back in the language that was asked for, not the one selected in the
+    // toolbar -- otherwise Shift+T would retry English in a Japanese voice.
+    speakText(text, voice ? voiceLocale(voice) : localeForLang(lang));
+  }
+}
+
+// Matches tts.MAX_CHARS, so an over-long selection is refused here with a clear
+// message instead of coming back as a 502.
+const MAX_SPEAK_CHARS = 1000;
+
+// T speaks the selection in the language being learned; Shift+T speaks it in
+// English, for the definitions and chat answers that sit beside it.
+function speakSelection(useEnglish) {
+  const text = selectionText();
+  if (!text) {
+    toast("Select some text first, then press T.");
+    return;
+  }
+  if (text.length > MAX_SPEAK_CHARS) {
+    toast(`That selection is too long to speak (${text.length} characters).`);
+    return;
+  }
+  // voice: null lets the server pick the English profile's own default, which
+  // is required because state.voice belongs to the language being learned.
+  speakWord(text, useEnglish ? { lang: "en", voice: null } : {});
+}
+
+// Attached only to text that really is in the language being learned. An
+// English definition spoken by a Japanese voice is noise, so those fields get
+// no button at all.
+function sayButton(text, title = "Hear this") {
+  const btn = document.createElement("button");
+  btn.className = "explain-say";
+  btn.textContent = "🔊";
+  btn.title = title;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    speakWord(text);
+  });
+  return btn;
+}
+
+function speakText(text, locale = voiceLocale(state.voice)) {
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = locale;
+  const match =
+    ttsVoices.find((v) => v.lang === locale) ||
+    ttsVoices.find((v) => v.lang.replace("_", "-") === locale) ||
+    ttsVoices.find((v) => v.lang.startsWith(locale.slice(0, 2)));
   if (match) utterance.voice = match;
-  window.speechSynthesis.cancel();
+  stopAudio();
   window.speechSynthesis.speak(utterance);
 }
 
 el.ttsBtn.addEventListener("click", speakTargetSentence);
 
-el.accentToggle.addEventListener("click", (e) => {
-  const btn = e.target.closest(".accent-btn");
+el.slowToggle.addEventListener("click", () => {
+  state.slowSpeech = !state.slowSpeech;
+  el.slowToggle.classList.toggle("active", state.slowSpeech);
+});
+
+el.voiceToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".voice-btn");
   if (!btn) return;
-  document.querySelectorAll(".accent-btn").forEach((b) => b.classList.remove("active"));
+  el.voiceToggle.querySelectorAll(".voice-btn").forEach((b) => b.classList.remove("active"));
   btn.classList.add("active");
-  state.accent = btn.dataset.accent;
+  state.voice = btn.dataset.voice;
 });
 
 el.autopauseToggle.addEventListener("change", () => {
@@ -834,7 +1366,7 @@ el.recommendBtn.addEventListener("click", async () => {
   el.status.textContent = "Scoring sentences for shadowing value...";
   el.status.classList.remove("hidden");
   try {
-    const resp = await fetch(`/api/videos/${state.videoId}/recommendations`, { method: "POST" });
+    const resp = await fetch(videoUrl("/recommendations"), { method: "POST" });
     if (!resp.ok) {
       let detail = `Request failed (${resp.status}).`;
       try {
@@ -868,7 +1400,7 @@ el.regenModifiedBtn.addEventListener("click", async () => {
   if (!state.videoId) return;
   el.status.textContent = "Regenerating sentence segmentation...";
   el.status.classList.remove("hidden");
-  const resp = await fetch(`/api/videos/${state.videoId}/regenerate?target=modified`, { method: "POST" }).then((r) => r.json());
+  const resp = await fetch(videoUrl("/regenerate", { target: "modified" }), { method: "POST" }).then((r) => r.json());
   state.modified = resp.sentences;
   buildChunkMap();
   resetSentenceState();
@@ -880,9 +1412,9 @@ el.regenRawBtn.addEventListener("click", async () => {
   if (!state.videoId) return;
   el.status.textContent = "Re-downloading raw transcript...";
   el.status.classList.remove("hidden");
-  const resp = await fetch(`/api/videos/${state.videoId}/regenerate?target=raw`, { method: "POST" }).then((r) => r.json());
+  const resp = await fetch(videoUrl("/regenerate", { target: "raw" }), { method: "POST" }).then((r) => r.json());
   state.raw = resp.sentences;
-  const modResp = await fetch(`/api/videos/${state.videoId}/transcript?mode=modified`).then((r) => r.json());
+  const modResp = await fetch(videoUrl("/transcript", { mode: "modified" })).then((r) => r.json());
   state.modified = modResp.sentences;
   buildChunkMap();
   resetSentenceState();
@@ -892,7 +1424,7 @@ el.regenRawBtn.addEventListener("click", async () => {
 
 el.flushDictBtn.addEventListener("click", async () => {
   if (!state.videoId) return;
-  await fetch(`/api/videos/${state.videoId}/explain/flush`, { method: "POST" });
+  await fetch(videoUrl("/explain/flush"), { method: "POST" });
   state.explainCache.clear();
 });
 
@@ -901,8 +1433,15 @@ el.loadBtn.addEventListener("click", () => loadVideo(el.input.value.trim()));
 el.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter") loadVideo(el.input.value.trim());
 });
+// The video's own language wins over whatever the selector happens to show.
+// Without this a video saved under one language could be reopened under
+// another, and every explanation for it would be generated from the wrong
+// prompt against text it doesn't match.
 el.historySelect.addEventListener("change", () => {
-  if (el.historySelect.value) loadVideo(el.historySelect.value);
+  const videoId = el.historySelect.value;
+  if (!videoId) return;
+  const meta = state.history[videoId];
+  loadVideo(videoId, (meta && meta.lang) || state.lang);
 });
 
 // ---- Chat: markdown ----
@@ -1142,7 +1681,7 @@ async function sendChat(text) {
   scrollChatToBottom();
 
   try {
-    const resp = await fetch(`/api/videos/${state.videoId}/chat`, {
+    const resp = await fetch(videoUrl("/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: state.chat.messages }),
@@ -1230,7 +1769,9 @@ state.autoPauseEnabled = el.autopauseToggle.checked;
 state.stayOnSentence = el.stayToggle.checked;
 syncStayToggle();
 state.recommendRatio = parseFloat(el.recommendRatio.value);
-refreshHistory();
+// Languages first: the history dropdown groups by them, and the load flow
+// needs a language before it can ask for anything.
+initLanguages().then(refreshHistory);
 
 // ---- Resizable panes ----
 // Two dividers, both pointer-driven. The vertical one stores the left column as
@@ -1244,6 +1785,10 @@ const MAX_COL_PCT = 82;
 const MIN_VIDEO_H = 120;
 const MIN_CHAT_H = 150;
 const DEFAULT_COL_PCT = 50;
+// Matches the min-width/max-width the popup's own rule sets, so a width read
+// back out of storage is clamped to the same range the browser would allow.
+const MIN_POPUP_W = 320;
+const MAX_POPUP_VW = 0.95;
 
 const layoutEl = {
   main: document.getElementById("app-main"),
@@ -1255,9 +1800,10 @@ const layoutEl = {
   rowResizer: document.getElementById("row-resizer"),
 };
 
-// videoH stays null until the user actually drags it, so the default keeps
-// tracking the column width (a 16:9 pane) instead of freezing at load time.
-const layout = { leftPct: DEFAULT_COL_PCT, videoH: null };
+// videoH and popupW stay null until the user actually drags them, so the
+// defaults keep tracking the window (a 16:9 pane, a popup sized to the viewport)
+// instead of freezing at load time.
+const layout = { leftPct: DEFAULT_COL_PCT, videoH: null, popupW: null };
 
 function loadLayout() {
   let saved = null;
@@ -1269,6 +1815,7 @@ function loadLayout() {
   if (saved && typeof saved === "object") {
     if (Number.isFinite(saved.leftPct)) layout.leftPct = saved.leftPct;
     if (Number.isFinite(saved.videoH)) layout.videoH = saved.videoH;
+    if (Number.isFinite(saved.popupW)) layout.popupW = saved.popupW;
   }
 }
 
@@ -1304,10 +1851,36 @@ function applyVideoH(px) {
   return h;
 }
 
+// The popup is resized with the browser's own corner handle rather than a
+// divider of ours, because it has no neighbour to trade space with -- it floats
+// over everything. That leaves no pointerdown/pointerup pair to hang a save on,
+// so the width is observed instead of dragged.
+function applyPopupWidth() {
+  if (layout.popupW === null) return;
+  const max = Math.round(window.innerWidth * MAX_POPUP_VW);
+  el.popup.style.width = `${Math.min(max, Math.max(MIN_POPUP_W, layout.popupW))}px`;
+}
+
+let popupWidthSaveHandle = null;
+
+// A user drag is the only thing that writes an inline width -- the default
+// comes from CSS - so the presence of one is what separates a real resize from
+// the popup merely being shown, or reflowing as its content loads.
+const popupResizeObserver = new ResizeObserver(() => {
+  const inline = parseFloat(el.popup.style.width);
+  if (!Number.isFinite(inline) || inline === layout.popupW) return;
+  layout.popupW = inline;
+  clearTimeout(popupWidthSaveHandle);
+  popupWidthSaveHandle = setTimeout(saveLayout, 250);
+});
+
+popupResizeObserver.observe(el.popup);
+
 function applyLayout() {
   applyLeftPct(layout.leftPct);
   const h = applyVideoH(layout.videoH === null ? defaultVideoH() : layout.videoH);
   if (layout.videoH !== null) layout.videoH = h;
+  applyPopupWidth();
 }
 
 function startResize(e, axis) {

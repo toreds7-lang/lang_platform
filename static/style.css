@@ -31,7 +31,7 @@ body {
   color: #eee;
 }
 
-#load-btn, .mode-btn, .accent-btn, #toolbar button, #tts-play-btn, #popup-close,
+#load-btn, .mode-btn, .voice-btn, #toolbar button, #tts-play-btn, #slow-toggle, #popup-close,
 #chat-send, #chat-clear {
   cursor: pointer;
   border: 1px solid #444;
@@ -41,12 +41,12 @@ body {
   padding: 8px 12px;
 }
 
-#load-btn:hover, .mode-btn:hover, .accent-btn:hover, #toolbar button:hover, #tts-play-btn:hover,
+#load-btn:hover, .mode-btn:hover, .voice-btn:hover, #toolbar button:hover, #tts-play-btn:hover, #slow-toggle:hover,
 #chat-send:hover:not(:disabled), #chat-clear:hover {
   background: #43444e;
 }
 
-#history-select, #recommend-ratio {
+#history-select, #lang-select, #recommend-ratio {
   padding: 8px;
   border-radius: 6px;
   background: #1a1b20;
@@ -83,7 +83,7 @@ body {
   gap: 4px;
 }
 
-.mode-btn.active, .accent-btn.active {
+.mode-btn.active, .voice-btn.active {
   background: #3b6fd4;
   border-color: #3b6fd4;
 }
@@ -199,6 +199,10 @@ body {
 
 .sentence-text {
   flex: 1;
+  /* Without an explicit CJK stack these fall through to whatever the browser
+     picks, which on Windows is often a mismatched face per script. */
+  font-family: system-ui, "Segoe UI", "Microsoft YaHei", "Yu Gothic UI",
+    "Malgun Gothic", "Noto Sans CJK SC", sans-serif;
 }
 
 .sentence-text .word {
@@ -207,6 +211,35 @@ body {
 
 .sentence-text .word:hover {
   text-decoration: underline dotted;
+}
+
+/* Scripts written without spaces need a little air between words, since there
+   is no space character doing that job. Only applied where the server actually
+   grouped the words, so English spacing is untouched. */
+.sentence-text ruby {
+  ruby-position: over;
+  margin-right: 0.12em;
+}
+
+.sentence-text rt {
+  font-size: 0.62em;
+  line-height: 1.1;
+  color: #9aa4b8;
+  font-weight: 400;
+  /* Latin readings like pinyin are wider than the characters under them, so
+     without this they cram against their neighbours. */
+  letter-spacing: 0.01em;
+}
+
+/* Hiding the reading is one class on the list: no re-render, no state to keep
+   in sync, and the line height snaps back on its own. */
+#transcript-list.no-reading rt {
+  display: none;
+}
+
+#reading-toggle.active {
+  background: #3b6fd4;
+  border-color: #3b6fd4;
 }
 
 #player-panel {
@@ -569,10 +602,22 @@ a.ts:hover {
   border: 1px solid #444;
   border-radius: 10px;
   padding: 20px 24px;
-  max-width: 520px;
-  width: 90%;
+  /* The starting width, until a drag replaces it with an inline one. A
+     breakdown's two columns want more room than a word definition, but the
+     width is the reader's choice rather than the mode's, so there is one of
+     them and it is remembered. */
+  width: var(--popup-w, min(520px, 90vw));
+  min-width: 320px;
+  max-width: 95vw;
   max-height: 80vh;
+  /* Required for `resize` to apply at all -- and overflow-x computes to auto
+     alongside it, which is what keeps a long unbroken line from escaping the
+     box once it has been narrowed. */
   overflow-y: auto;
+  /* Drag the bottom-right corner to widen. The popup stays centred while it
+     grows, so the corner tracks the pointer at half speed; the width still
+     lands exactly where it is dropped. */
+  resize: horizontal;
   z-index: 11;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
@@ -617,6 +662,13 @@ a.ts:hover {
   margin-bottom: 12px;
 }
 
+.explain-wordhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .explain-pos {
   display: inline-block;
   color: #ccc;
@@ -624,7 +676,55 @@ a.ts:hover {
   border-radius: 4px;
   font-size: 0.8em;
   padding: 2px 8px;
-  margin-bottom: 10px;
+}
+
+/* The pronunciation leads, because for a tonal language it is the part you
+   have to get right before anything else about the word matters. */
+.explain-reading {
+  color: #8fc7ff;
+  font-size: 0.95em;
+  letter-spacing: 0.02em;
+}
+
+.explain-say {
+  cursor: pointer;
+  border: 1px solid #444;
+  background: #33343c;
+  color: #eee;
+  border-radius: 4px;
+  font-size: 0.85em;
+  line-height: 1.2;
+  padding: 1px 7px;
+}
+
+/* In the word header the button sits at the far right; everywhere else it sits
+   directly beside the text it speaks. */
+.explain-wordhead .explain-say {
+  margin-left: auto;
+}
+
+/* .grammar-point is already a flex row with its own gap, so only the label
+   case needs a margin of its own. */
+.explain-label .explain-say {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.explain-say:hover {
+  background: #43444e;
+}
+
+/* The English translation of a target-language example. Kept visually
+   subordinate: it is there to make the example readable, not to be practised. */
+.explain-gloss {
+  color: #9aa0ad;
+  font-size: 0.9em;
+  margin-top: 4px;
+}
+
+#slow-toggle.active {
+  background: #3b6fd4;
+  border-color: #3b6fd4;
 }
 
 .explain-section {
@@ -673,6 +773,91 @@ a.ts:hover {
   color: #ddd;
 }
 
+/* One row per part of the passage. Same three-element shape as .grammar-point:
+   the target-language fragment, its speak button, and the English beside it. */
+.breakdown-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  line-height: 1.55;
+  margin-top: 6px;
+}
+
+/* Given a floor rather than left to the text, so the glosses line up into a
+   readable second column instead of starting at a different x on every row.
+   The ceiling is what stops one unusually long part -- a Vietnamese compound,
+   a run-together caption -- from squeezing the gloss column to nothing once the
+   popup has been dragged narrow. */
+.breakdown-part {
+  flex-shrink: 0;
+  min-width: 5.5em;
+  max-width: 40%;
+  overflow-wrap: anywhere;
+  color: #9ecbff;
+}
+
+.breakdown-gloss {
+  color: #ddd;
+  overflow-wrap: anywhere;
+}
+
+.vocab-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.anki-copy {
+  margin-left: auto;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: #33343c;
+  color: #eee;
+  border-radius: 4px;
+  font-size: 0.95em;
+  line-height: 1.2;
+  padding: 3px 8px;
+}
+
+.anki-copy:hover {
+  background: #43444e;
+}
+
+.vocab-row {
+  margin-top: 10px;
+}
+
+.vocab-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  line-height: 1.5;
+}
+
+.vocab-word {
+  color: #9ecbff;
+  font-weight: 700;
+}
+
+.vocab-reading {
+  color: #8fc7ff;
+  font-size: 0.9em;
+}
+
+.vocab-meaning {
+  color: #eee;
+}
+
+/* The flashcard back: present, but not competing with the headword above it. */
+.vocab-explain {
+  color: #9aa0ad;
+  font-size: 0.9em;
+  line-height: 1.5;
+  margin-top: 2px;
+  padding-left: 34px;
+}
+
 .explain-loading {
   color: #999;
 }
@@ -692,4 +877,37 @@ a.ts:hover {
 
 .hidden {
   display: none !important;
+}
+
+/* Transient feedback: which key did nothing, and why. Above the popup (z-index
+   10/11) because it reports on actions taken while the popup is open.
+   Animated rather than transitioned: .hidden is display:none, which a
+   transition cannot animate away from, but an animation does run the moment
+   the element becomes displayed. */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: min(560px, 90vw);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #33343c;
+  border: 1px solid #4a4b55;
+  color: #eee;
+  font-size: 0.9em;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  /* Never swallow a click, and never become part of a text selection - this
+     feature is driven by selections, so a stray one here would be its own bug. */
+  pointer-events: none;
+  user-select: none;
+  animation: toast-in 140ms ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
 }

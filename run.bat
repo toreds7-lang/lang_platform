@@ -32,15 +32,28 @@ if not exist ".venv" (
 
 call ".venv\Scripts\activate.bat"
 
-if not exist ".venv\.installed" (
-    echo Installing dependencies, this only happens once...
+REM The stamp holds requirements.txt's timestamp rather than just existing, so
+REM that adding a dependency actually reinstalls. A bare "have we ever
+REM installed?" flag silently skips new packages and the app then fails at
+REM runtime with an import error.
+set "STAMP=.venv\.installed"
+for %%A in ("requirements.txt") do set "REQ_TIME=%%~tA"
+
+set "NEED_INSTALL=1"
+if exist "%STAMP%" (
+    set /p SAVED_TIME=<"%STAMP%"
+    if "!SAVED_TIME!"=="!REQ_TIME!" set "NEED_INSTALL="
+)
+
+if defined NEED_INSTALL (
+    echo Installing dependencies...
     pip install -r requirements.txt
     if errorlevel 1 (
         echo Dependency installation failed.
         pause
         exit /b 1
     )
-    echo. > ".venv\.installed"
+    echo !REQ_TIME!> "%STAMP%"
 )
 
 echo Starting server...
